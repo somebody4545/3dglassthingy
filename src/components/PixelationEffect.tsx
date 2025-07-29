@@ -116,14 +116,8 @@ export default function PixelationEffect({
 
     window.addEventListener('resize', handleResize);
 
-    // Optional: Re-apply periodically for dynamic effect
-    const interval = setInterval(() => {
-      pixelate(tileSize, sigmaGauss);
-    }, 3000);
-
     return () => {
       window.removeEventListener('resize', handleResize);
-      clearInterval(interval);
       
       // Clean up filter when component unmounts
       if (currentContainer) {

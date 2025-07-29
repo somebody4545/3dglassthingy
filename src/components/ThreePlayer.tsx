@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useLayoutEffect, useRef } from "react";
 import * as THREE from "three";
 import SceneContent from "./SceneContent";
 import DetailView from "./DetailView";
@@ -19,25 +19,57 @@ export default function ThreePlayer({
     width: width ?? 800, 
     height: height ?? 600 
   });
-
-  useEffect(() => {
-    setIsClient(true);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  
+  // Base FOV for 16:9 aspect ratio (this will be the minimum)
+  const baseFOV = projectData?.camera?.object?.fov ?? 50;
+  const baseAspect = 16 / 9;
+  
+  // Calculate FOV based on aspect ratio to maintain minimum viewing angles
+  const calculateFOV = (aspect: number) => {
+    // Calculate what the horizontal FOV would be at the base aspect ratio
+    const baseVerticalFOV = baseFOV;
+    const baseHorizontalFOV = 2 * Math.atan(Math.tan((baseVerticalFOV * Math.PI) / 360) * baseAspect) * (180 / Math.PI);
     
-    // Set initial dimensions
+    // Calculate what vertical FOV we need to maintain the base horizontal FOV at current aspect
+    const requiredVerticalFOVForHorizontal = 2 * Math.atan(Math.tan((baseHorizontalFOV * Math.PI) / 360) / aspect) * (180 / Math.PI);
+    
+    // Use the larger of the two FOVs to ensure both dimensions meet their minimum
+    return Math.max(baseVerticalFOV, requiredVerticalFOVForHorizontal);
+  };
+
+  // Use layoutEffect to set dimensions synchronously before paint
+  useLayoutEffect(() => {
     if (typeof window !== 'undefined') {
       setDimensions({
         width: width ?? window.innerWidth,
         height: height ?? window.innerHeight
       });
+      setIsClient(true);
     }
+  }, [width, height]);
 
-    // Handle window resize
+  useEffect(() => {
+    // Handle window resize and update camera
     const handleResize = () => {
       if (typeof window !== 'undefined') {
-        setDimensions({
+        const newDimensions = {
           width: width ?? window.innerWidth,
           height: height ?? window.innerHeight
-        });
+        };
+        setDimensions(newDimensions);
+        
+        // Update camera and renderer if they exist
+        if (cameraRef.current && rendererRef.current) {
+          const newAspect = newDimensions.width / newDimensions.height;
+          const newFOV = calculateFOV(newAspect);
+          
+          cameraRef.current.aspect = newAspect;
+          cameraRef.current.fov = newFOV;
+          cameraRef.current.updateProjectionMatrix();
+          rendererRef.current.setSize(newDimensions.width, newDimensions.height);
+        }
       }
     };
 
@@ -45,7 +77,7 @@ export default function ThreePlayer({
       window.addEventListener('resize', handleResize);
       return () => window.removeEventListener('resize', handleResize);
     }
-  }, [width, height]);
+  }, [width, height, calculateFOV]);
 
   if (!isClient) {
     return (
@@ -70,25 +102,26 @@ export default function ThreePlayer({
           toneMapping: projectData?.project?.toneMapping ?? THREE.ACESFilmicToneMapping,
           toneMappingExposure: projectData?.project?.toneMappingExposure ?? 1
         }}
+        dpr={0.25} // Render at half resolution for better performance
         style={{ width: '100%', height: '100%' }}
         frameloop="always"
         onCreated={(state) => {
-          // Cap framerate to 30 FPS
-          let lastFrameTime = 0;
-          const targetFPS = 30;
-          const interval = 1000 / targetFPS;
+          // Store refs for resize handling
+          cameraRef.current = state.camera as THREE.PerspectiveCamera;
+          rendererRef.current = state.gl;
           
-          const render = (time: number) => {
-            if (time - lastFrameTime >= interval) {
-              lastFrameTime = time;
-              state.gl.render(state.scene, state.camera);
-            }
-            requestAnimationFrame(render);
-          };
+          // Set initial camera aspect ratio and FOV
+          if (state.camera instanceof THREE.PerspectiveCamera) {
+            const initialAspect = dimensions.width / dimensions.height;
+            const initialFOV = calculateFOV(initialAspect);
+            
+            state.camera.aspect = initialAspect;
+            state.camera.fov = initialFOV;
+            state.camera.updateProjectionMatrix();
+          }
           
-          // Stop the default render loop and start our custom one
-          state.gl.setAnimationLoop(null);
-          requestAnimationFrame(render);
+          // Set initial renderer size
+          state.gl.setSize(dimensions.width, dimensions.height);
         }}
         camera={{
           fov: projectData?.camera?.object?.fov ?? 50,

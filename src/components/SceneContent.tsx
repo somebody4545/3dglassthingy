@@ -36,6 +36,24 @@ export default function SceneContent({
   const [isInIntroView, setIsInIntroView] = useState(false);
   const [selectedSection, setSelectedSection] = useState<number | null>(null);
 
+  // Adaptive FOV calculation (same as in ThreePlayer)
+  const baseAspect = 16 / 9;
+  
+  // Track current base FOV (the FOV that would be used at 16:9)
+  const currentBaseFOVRef = useRef<number>(CAMERA_CONFIGS.sideview.fov);
+  
+  const calculateAdaptiveFOV = (baseFOV: number, aspect: number) => {
+    // Calculate what the horizontal FOV would be at the base aspect ratio
+    const baseVerticalFOV = baseFOV;
+    const baseHorizontalFOV = 2 * Math.atan(Math.tan((baseVerticalFOV * Math.PI) / 360) * baseAspect) * (180 / Math.PI);
+    
+    // Calculate what vertical FOV we need to maintain the base horizontal FOV at current aspect
+    const requiredVerticalFOVForHorizontal = 2 * Math.atan(Math.tan((baseHorizontalFOV * Math.PI) / 360) / aspect) * (180 / Math.PI);
+    
+    // Use the larger of the two FOVs to ensure both dimensions meet their minimum
+    return Math.max(baseVerticalFOV, requiredVerticalFOVForHorizontal);
+  };
+
   // Sync with parent component's selectedSection
   useEffect(() => {
     setSelectedSection(parentSelectedSection ?? null);
@@ -98,7 +116,9 @@ export default function SceneContent({
     
     transitionRef.current.targetPos.copy(tempPos);
     transitionRef.current.targetQuaternion.copy(tempQuat);
-    transitionRef.current.startFov = (camera as THREE.PerspectiveCamera).fov;
+    
+    // Store base FOVs (not adaptive ones)
+    transitionRef.current.startFov = currentBaseFOVRef.current;
     transitionRef.current.targetFov = CAMERA_CONFIGS.intro.fov;
     transitionRef.current.startTime = performance.now();
     
@@ -128,7 +148,9 @@ export default function SceneContent({
     
     transitionRef.current.targetPos.copy(tempPos);
     transitionRef.current.targetQuaternion.copy(tempQuat);
-    transitionRef.current.startFov = (camera as THREE.PerspectiveCamera).fov;
+    
+    // Store base FOVs (not adaptive ones)
+    transitionRef.current.startFov = currentBaseFOVRef.current;
     transitionRef.current.targetFov = CAMERA_CONFIGS.sideview.fov;
     transitionRef.current.startTime = performance.now();
     
@@ -187,7 +209,17 @@ export default function SceneContent({
         const sideviewMatrix = new THREE.Matrix4().fromArray(CAMERA_CONFIGS.sideview.matrix);
         camera.matrix.copy(sideviewMatrix);
         camera.matrix.decompose(camera.position, camera.quaternion, camera.scale);
-        (camera as THREE.PerspectiveCamera).fov = CAMERA_CONFIGS.sideview.fov;
+        
+        // Set adaptive FOV based on current aspect ratio
+        const canvas = renderer.domElement;
+        const currentAspect = canvas.clientWidth / canvas.clientHeight;
+        const adaptiveFOV = calculateAdaptiveFOV(CAMERA_CONFIGS.sideview.fov, currentAspect);
+        
+        // Update the current base FOV tracker
+        currentBaseFOVRef.current = CAMERA_CONFIGS.sideview.fov;
+        
+        (camera as THREE.PerspectiveCamera).fov = adaptiveFOV;
+        (camera as THREE.PerspectiveCamera).aspect = currentAspect;
         camera.updateProjectionMatrix();
         
         console.log('Camera initialized to sideview position and rotation:', camera.position, camera.rotation);
@@ -265,13 +297,20 @@ export default function SceneContent({
     } catch (error) {
       console.error('Error loading scene:', error);
     }
-  }, [sceneData, cameraData, scripts, scene, camera, renderer, isLoaded, onInit, selectorGeometry]);
+  }, [sceneData, cameraData, scripts, scene, camera, renderer, isLoaded, onInit, selectorGeometry, calculateAdaptiveFOV]);
 
-  // Animation loop
+  // Animation loop with 30 FPS cap
   useFrame((_state) => {
     if (!isLoaded) return;
 
     const time = performance.now();
+    
+    // Frame rate limiting to 30 FPS
+    const targetFPS = 30;
+    const interval = 1000 / targetFPS;
+    if (time - timeRef.current.prevTime < interval) {
+      return; // Skip this frame
+    }
     
     if (timeRef.current.startTime === 0) {
       timeRef.current.startTime = time;
@@ -301,19 +340,32 @@ export default function SceneContent({
           easeProgress
         );
         
-        // Interpolate FOV
+        // Interpolate FOV with adaptive calculation
+        const canvas = renderer.domElement;
+        const currentAspect = canvas.clientWidth / canvas.clientHeight;
+        
+        // Calculate adaptive FOVs for start and target
+        const adaptiveStartFov = calculateAdaptiveFOV(transitionRef.current.startFov, currentAspect);
+        const adaptiveTargetFov = calculateAdaptiveFOV(transitionRef.current.targetFov, currentAspect);
+        
         const currentFov = THREE.MathUtils.lerp(
-          transitionRef.current.startFov,
-          transitionRef.current.targetFov,
+          adaptiveStartFov,
+          adaptiveTargetFov,
           easeProgress
         );
+        
         (camera as THREE.PerspectiveCamera).fov = currentFov;
+        (camera as THREE.PerspectiveCamera).aspect = currentAspect;
         camera.updateProjectionMatrix();
       }
       
       if (progress >= 1) {
         transitionRef.current.isTransitioning = false;
         setIsTransitioning(false);
+        
+        // Update the current base FOV tracker
+        currentBaseFOVRef.current = transitionRef.current.targetFov;
+        
         // Only enable hover effects when transitioning to intro view, not sideview
         if (transitionRef.current.targetFov === CAMERA_CONFIGS.intro.fov) {
           setIsInIntroView(true);
@@ -406,7 +458,7 @@ export default function SceneContent({
           return (
             <SelectorObject 
               key={`selector-${i}`}
-              position={[xPosition, -0.09537577629089355, 1.5677690505981445]}
+              position={[xPosition, -0.09537577629089355, 1.5677690505981445 + (i * 0.1)]} // Stagger Z position to prevent overlap issues
               rotation={randomRotations[i]}
               scale={[2.147387316260944, 2.147387316260944, 2.1473870277404785]}
               geometry={selectorGeometry.clone()}

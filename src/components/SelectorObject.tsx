@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import * as THREE from "three";
 import { useSpring, animated } from "@react-spring/three";
 import { MeshTransmissionMaterial, Html } from "@react-three/drei";
@@ -19,28 +19,37 @@ export default function SelectorObject({
   isHidden = false
 }: SelectorObjectProps) {
   const [hovered, setHovered] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  
-  // Create video texture
-  const videoTexture = useRef<THREE.VideoTexture | null>(null);
+  const [textTexture, setTextTexture] = useState<THREE.CanvasTexture | null>(null);
   
   useEffect(() => {
-    // Create video element
-    const video = document.createElement('video');
-    video.src = '/content.mp4';
-    video.crossOrigin = 'anonymous';
-    video.loop = true;
-    video.muted = true;
-    video.playsInline = true;
+    // Only create texture if we don't have one or if sectionIndex actually changed
+    if (textTexture && textTexture.userData?.sectionIndex === sectionIndex) {
+      return; // No need to recreate
+    }
     
-    // Brighten the video using CSS filters
-    video.style.filter = 'brightness(1.5) contrast(1.2)';
+    // Create canvas for text texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const context = canvas.getContext('2d');
     
-    // Create video texture
-    const texture = new THREE.VideoTexture(video);
+    if (context) {
+      // Fill background
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw text
+      context.fillStyle = '#222222';
+      context.font = 'bold 200px Arial';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(sectionIndex.toString(), canvas.width / 2, canvas.height / 2);
+    }
+    
+    // Create texture from canvas
+    const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
-    texture.format = THREE.RGBAFormat;
     
     // Rotate 90 degrees clockwise and fix mirroring
     texture.rotation = -Math.PI / 2; // -90 degrees (clockwise)
@@ -49,17 +58,23 @@ export default function SelectorObject({
     texture.wrapT = THREE.RepeatWrapping;
     texture.center.set(0.5, 0.5); // Set rotation center
     
-    videoTexture.current = texture;
-    videoRef.current = video;
+    // Force texture update
+    texture.needsUpdate = true;
     
-    // Start playing video
-    video.play().catch(console.error);
+    // Store sectionIndex in userData to prevent unnecessary recreations
+    texture.userData = { sectionIndex };
+    
+    // Dispose old texture if it exists
+    if (textTexture) {
+      textTexture.dispose();
+    }
+    
+    setTextTexture(texture);
     
     return () => {
-      video.pause();
       texture.dispose();
     };
-  }, []);
+  }, [sectionIndex, textTexture]); // Keep sectionIndex dependency but add optimization above
   
   // Calculate position based on selection state
   const finalPosition = isSelected 
@@ -92,7 +107,12 @@ export default function SelectorObject({
       rotation-z={rotation[2]}
       scale={finalScale}
       name="selector"
-      onClick={onClick}
+      onClick={(e) => {
+        e.stopPropagation(); // Prevent event from bubbling to objects behind
+        if (onClick) {
+          onClick();
+        }
+      }}
       onPointerOver={(e: { stopPropagation: () => void }) => {
         e.stopPropagation(); // Prevent event from bubbling to objects behind
         document.body.style.cursor = 'pointer'; // Always show pointer cursor
@@ -100,16 +120,17 @@ export default function SelectorObject({
           setHovered(true); // Only enable animation when in intro view
         }
       }}
-      onPointerOut={(_e) => {
+      onPointerOut={(e) => {
+        e.stopPropagation(); // Prevent event from bubbling to objects behind
         document.body.style.cursor = 'auto'; // Always reset cursor
         if (enableHover && !isSelected) { // Don't hover when selected
           setHovered(false); // Only disable animation when in intro view
         }
       }}
-      onPointerDown={() => {
+      onPointerDown={(e) => {
+        e.stopPropagation(); // Prevent event from bubbling to objects behind
         setHovered(false); // Hide tooltip immediately when clicked
       }}
-      raycast-priority={position[0]} // Higher X position gets priority (frontmost object)
     >
       {geometry ? (
         <primitive object={geometry} />
@@ -130,9 +151,10 @@ export default function SelectorObject({
         distortion={0.0}
         distortionScale={0.0}
         temporalDistortion={0.0}
-        map={videoTexture.current}
+        map={textTexture}
         color="#aaffaa"
         side={THREE.DoubleSide}
+        key={sectionIndex} // Force re-render when sectionIndex changes
       />
       
       {/* Tooltip */}
@@ -143,7 +165,7 @@ export default function SelectorObject({
           distanceFactor={8}
         >
           {/* WIDE */}
-          <h1 className="text-4xl rounded-4xl font-bold text-center p-16 px-8 w-96 text-white bg-black/40 backdrop-blur-2xl max-content">
+          <h1 className="text-6xl rounded-4xl font-bold text-center p-16 px-8 w-96 text-white bg-black/40 backdrop-blur-2xl max-content">
             {sectionIndex === 0 ? "← Back to Start" : `Section ${sectionIndex}`}
           </h1>
         </Html>
