@@ -102,7 +102,7 @@ export default function ThreePlayer({
           toneMapping: projectData?.project?.toneMapping ?? THREE.ACESFilmicToneMapping,
           toneMappingExposure: projectData?.project?.toneMappingExposure ?? 1
         }}
-        dpr={0.25} // Render at half resolution for better performance
+        dpr={0.5} // Render at half resolution for better performance
         style={{ width: '100%', height: '100%' }}
         frameloop="always"
         onCreated={(state) => {
