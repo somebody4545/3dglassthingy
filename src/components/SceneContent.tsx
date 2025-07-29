@@ -7,6 +7,19 @@ import SelectorObject from "./SelectorObject";
 import { dispatch, CAMERA_CONFIGS, TRANSITION_CONFIG } from "./utils";
 import type { SceneContentProps } from "./types";
 
+interface EventHandlers {
+  init: Array<(event: unknown) => void>;
+  start: Array<(event: unknown) => void>;
+  stop: Array<(event: unknown) => void>;
+  keydown: Array<(event: unknown) => void>;
+  keyup: Array<(event: unknown) => void>;
+  pointerdown: Array<(event: unknown) => void>;
+  pointerup: Array<(event: unknown) => void>;
+  pointermove: Array<(event: unknown) => void>;
+  update: Array<(event: unknown) => void>;
+  [key: string]: Array<(event: unknown) => void>;
+}
+
 // Component to handle the 3D scene content
 export default function SceneContent({ 
   sceneData, 
@@ -43,7 +56,7 @@ export default function SceneContent({
     })
   );
   
-  const eventsRef = useRef<any>({
+  const eventsRef = useRef<EventHandlers>({
     init: [],
     start: [],
     stop: [],
@@ -144,20 +157,22 @@ export default function SceneContent({
       scene.copy(loadedScene);
 
       // Apply MeshTransmissionMaterial to objects named "selector" or "selectors"
-      scene.traverse((object: any) => {
-        if (object.isMesh &&  object.name === 'selectors') {
+      scene.traverse((object: THREE.Object3D) => {
+        if ('isMesh' in object && object.isMesh && 'name' in object && object.name === 'selectors') {
           console.log('Found selector object, applying MeshTransmissionMaterial:', object.name);
 
           // Extract and store the geometry for reuse
-          if (object.geometry && !selectorGeometry) {
+          if ('geometry' in object && object.geometry && !selectorGeometry) {
             // Clone the geometry to avoid sharing issues
-            const clonedGeometry = object.geometry.clone();
+            const clonedGeometry = (object as THREE.Mesh).geometry.clone();
             setSelectorGeometry(clonedGeometry);
             console.log('Extracted selector geometry for reuse');
           }
 
           // Hide the original object
-          object.visible = false;
+          if ('visible' in object) {
+            object.visible = false;
+          }
           console.log('Hidden original selector object');
         }
       });
@@ -181,7 +196,7 @@ export default function SceneContent({
       // Process scripts if they exist
       if (scripts) {
         const scriptWrapParams = 'player,renderer,scene,camera';
-        let scriptWrapResultObj: any = {};
+        const scriptWrapResultObj: Record<string, string> = {};
 
         for (const eventKey in eventsRef.current) {
           scriptWrapResultObj[eventKey] = eventKey;
@@ -199,24 +214,38 @@ export default function SceneContent({
 
           const objectScripts = scripts[uuid];
 
+          // Type guard to ensure objectScripts is an array
+          if (!Array.isArray(objectScripts)) {
+            console.warn('ThreePlayer: Scripts for object is not an array.', uuid);
+            continue;
+          }
+
           for (let i = 0; i < objectScripts.length; i++) {
             const script = objectScripts[i];
 
+            // Type guard to ensure script has source property
+            if (!script || typeof script !== 'object' || !('source' in script) || typeof script.source !== 'string') {
+              console.warn('ThreePlayer: Invalid script format.', uuid, i);
+              continue;
+            }
+
             try {
+              // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-call -- Script execution is intentional for Three.js scene scripts
               const functions = (new Function(
                 scriptWrapParams, 
                 script.source + '\nreturn ' + scriptWrapResult + ';'
-              ).bind(object))(null, renderer, scene, camera);
+              ).bind(object as unknown))(null, renderer, scene, camera) as Record<string, (event: unknown) => void>;
 
               for (const name in functions) {
-                if (functions[name] === undefined) continue;
+                const func = functions[name];
+                if (func === undefined || typeof func !== 'function') continue;
 
-                if (eventsRef.current[name] === undefined) {
+                if (!(name in eventsRef.current)) {
                   console.warn('ThreePlayer: Event type not supported (', name, ')');
                   continue;
                 }
 
-                eventsRef.current[name].push(functions[name].bind(object));
+                eventsRef.current[name]?.push(func.bind(object) as (event: unknown) => void);
               }
             } catch (error) {
               console.error('Error processing script:', error);
@@ -239,7 +268,7 @@ export default function SceneContent({
   }, [sceneData, cameraData, scripts, scene, camera, renderer, isLoaded, onInit, selectorGeometry]);
 
   // Animation loop
-  useFrame((state) => {
+  useFrame((_state) => {
     if (!isLoaded) return;
 
     const time = performance.now();
@@ -298,8 +327,9 @@ export default function SceneContent({
         time: time - timeRef.current.startTime,
         delta: time - timeRef.current.prevTime
       });
-    } catch (e: any) {
-      console.error((e.message || e), (e.stack || ''));
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e : new Error(String(e));
+      console.error(error.message ?? error, error.stack ?? '');
     }
 
     timeRef.current.prevTime = time;
@@ -307,24 +337,26 @@ export default function SceneContent({
 
   // Event handlers
   useEffect(() => {
+    const currentEvents = eventsRef.current;
+    
     const handleKeyDown = (event: KeyboardEvent) => {
-      dispatch(eventsRef.current.keydown, event);
+      dispatch(currentEvents.keydown, event);
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      dispatch(eventsRef.current.keyup, event);
+      dispatch(currentEvents.keyup, event);
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      dispatch(eventsRef.current.pointerdown, event);
+      dispatch(currentEvents.pointerdown, event);
     };
 
     const handlePointerUp = (event: PointerEvent) => {
-      dispatch(eventsRef.current.pointerup, event);
+      dispatch(currentEvents.pointerup, event);
     };
 
     const handlePointerMove = (event: PointerEvent) => {
-      dispatch(eventsRef.current.pointermove, event);
+      dispatch(currentEvents.pointermove, event);
     };
 
     if (isLoaded) {
@@ -341,7 +373,7 @@ export default function SceneContent({
         document.removeEventListener('pointerup', handlePointerUp);
         document.removeEventListener('pointermove', handlePointerMove);
         
-        dispatch(eventsRef.current.stop, []);
+        dispatch(currentEvents.stop, []);
       };
     }
   }, [isLoaded]);

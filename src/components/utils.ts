@@ -1,5 +1,5 @@
 // Helper function to dispatch events
-export function dispatch(array: Function[], event: any) {
+export function dispatch(array: Array<(event: unknown) => void>, event: unknown) {
   for (let i = 0, l = array.length; i < l; i++) {
     const fn = array[i];
     if (fn) {

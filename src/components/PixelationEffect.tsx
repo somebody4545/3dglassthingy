@@ -16,6 +16,8 @@ export default function PixelationEffect({
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const currentContainer = containerRef.current;
+    
     function pixelate(currentTileSize = tileSize, currentSigmaGauss = sigmaGauss) {
       currentTileSize = currentTileSize < 1 ? 1 : currentTileSize;
       currentSigmaGauss = currentSigmaGauss < 1 ? 1 : currentSigmaGauss;
@@ -99,8 +101,8 @@ export default function PixelationEffect({
       }
 
       // Apply the filter to the container
-      if (containerRef.current) {
-        containerRef.current.style.filter = "url(#pixelate)";
+      if (currentContainer) {
+        currentContainer.style.filter = "url(#pixelate)";
       }
     }
 
@@ -124,8 +126,8 @@ export default function PixelationEffect({
       clearInterval(interval);
       
       // Clean up filter when component unmounts
-      if (containerRef.current) {
-        containerRef.current.style.filter = 'none';
+      if (currentContainer) {
+        currentContainer.style.filter = 'none';
       }
       
       const svgFilter = document.getElementById("pixelate-filter");

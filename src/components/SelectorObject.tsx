@@ -93,14 +93,14 @@ export default function SelectorObject({
       scale={finalScale}
       name="selector"
       onClick={onClick}
-      onPointerOver={(e: any) => {
+      onPointerOver={(e: { stopPropagation: () => void }) => {
         e.stopPropagation(); // Prevent event from bubbling to objects behind
         document.body.style.cursor = 'pointer'; // Always show pointer cursor
         if (enableHover && !isSelected) { // Don't hover when selected
           setHovered(true); // Only enable animation when in intro view
         }
       }}
-      onPointerOut={(e: any) => {
+      onPointerOut={(_e) => {
         document.body.style.cursor = 'auto'; // Always reset cursor
         if (enableHover && !isSelected) { // Don't hover when selected
           setHovered(false); // Only disable animation when in intro view

@@ -16,8 +16,8 @@ export default function ThreePlayer({
   const [isClient, setIsClient] = useState(false);
   const [selectedSection, setSelectedSection] = useState<number | null>(null);
   const [dimensions, setDimensions] = useState({ 
-    width: width || 800, 
-    height: height || 600 
+    width: width ?? 800, 
+    height: height ?? 600 
   });
 
   useEffect(() => {
@@ -26,8 +26,8 @@ export default function ThreePlayer({
     // Set initial dimensions
     if (typeof window !== 'undefined') {
       setDimensions({
-        width: width || window.innerWidth,
-        height: height || window.innerHeight
+        width: width ?? window.innerWidth,
+        height: height ?? window.innerHeight
       });
     }
 
@@ -35,8 +35,8 @@ export default function ThreePlayer({
     const handleResize = () => {
       if (typeof window !== 'undefined') {
         setDimensions({
-          width: width || window.innerWidth,
-          height: height || window.innerHeight
+          width: width ?? window.innerWidth,
+          height: height ?? window.innerHeight
         });
       }
     };
@@ -67,8 +67,8 @@ export default function ThreePlayer({
         shadows={projectData?.project?.shadows}
         gl={{
           antialias: true,
-          toneMapping: projectData?.project?.toneMapping || THREE.ACESFilmicToneMapping,
-          toneMappingExposure: projectData?.project?.toneMappingExposure || 1
+          toneMapping: projectData?.project?.toneMapping ?? THREE.ACESFilmicToneMapping,
+          toneMappingExposure: projectData?.project?.toneMappingExposure ?? 1
         }}
         style={{ width: '100%', height: '100%' }}
         frameloop="always"
@@ -91,13 +91,13 @@ export default function ThreePlayer({
           requestAnimationFrame(render);
         }}
         camera={{
-          fov: projectData?.camera?.object?.fov || 50,
-          near: projectData?.camera?.object?.near || 0.1,
-          far: projectData?.camera?.object?.far || 1000,
+          fov: projectData?.camera?.object?.fov ?? 50,
+          near: projectData?.camera?.object?.near ?? 0.1,
+          far: projectData?.camera?.object?.far ?? 1000,
           position: [
-            projectData?.camera?.object?.matrix?.[12] || 0,
-            projectData?.camera?.object?.matrix?.[13] || 0,
-            projectData?.camera?.object?.matrix?.[14] || 5
+            projectData?.camera?.object?.matrix?.[12] ?? 0,
+            projectData?.camera?.object?.matrix?.[13] ?? 0,
+            projectData?.camera?.object?.matrix?.[14] ?? 5
           ]
         }}
       >

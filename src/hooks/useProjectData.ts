@@ -1,22 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-
-export interface ProjectData {
-  metadata?: {
-    type: string;
-  };
-  project?: {
-    shadows?: boolean;
-    shadowType?: number;
-    toneMapping?: number;
-    toneMappingExposure?: number;
-  };
-  camera?: any;
-  scene?: any;
-  scripts?: any;
-  environment?: any;
-}
+import type { ProjectData } from '../components/types';
 
 export function useProjectData(jsonPath?: string): {
   data: ProjectData | null;
@@ -43,7 +28,7 @@ export function useProjectData(jsonPath?: string): {
       .then((projectData: ProjectData) => {
         setData(projectData);
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         setError(err.message);
         console.error('Error loading project data:', err);
       })
@@ -78,8 +63,8 @@ export function useProjectDataFromObject(projectData?: ProjectData): {
       }
 
       setData(projectData);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
       console.error('Error processing project data:', err);
     } finally {
       setLoading(false);
