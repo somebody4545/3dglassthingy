@@ -40,10 +40,10 @@ export default function SelectorObject({
       
       // Draw text
       context.fillStyle = '#222222';
-      context.font = 'bold 200px Arial';
+      context.font = 'bold 400px Arial';
       context.textAlign = 'center';
       context.textBaseline = 'middle';
-      context.fillText(sectionIndex.toString(), canvas.width / 2, canvas.height / 2);
+      context.fillText(sectionIndex.toString(), canvas.width / 2, canvas.height / 2 + 25);
     }
     
     // Create texture from canvas

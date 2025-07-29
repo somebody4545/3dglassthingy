@@ -20,7 +20,7 @@ export default function PixelationEffect({
     
     function pixelate(currentTileSize = tileSize, currentSigmaGauss = sigmaGauss) {
       currentTileSize = currentTileSize < 1 ? 1 : currentTileSize;
-      currentSigmaGauss = currentSigmaGauss < 1 ? 1 : currentSigmaGauss;
+      currentSigmaGauss = currentSigmaGauss < 0 ? 0 : currentSigmaGauss;
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
