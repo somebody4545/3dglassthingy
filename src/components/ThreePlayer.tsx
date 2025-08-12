@@ -2,6 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useState, useLayoutEffect, useRef, useCallback } from "react";
+import { usePreloadSectionMedia } from "../hooks/usePreloadSectionMedia";
 import * as THREE from "three";
 import SceneContent from "./SceneContent";
 import DetailView from "./DetailView";
@@ -21,6 +22,7 @@ export default function ThreePlayer({
   });
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const mediaPreload = usePreloadSectionMedia();
   
   // Base FOV for 16:9 aspect ratio (this will be the minimum)
   const baseFOV = projectData?.camera?.object?.fov ?? 50;
@@ -79,13 +81,23 @@ export default function ThreePlayer({
     }
   }, [width, height, calculateFOV]);
 
-  if (!isClient) {
+  if (!isClient || !mediaPreload.done) {
     return (
       <div 
         style={{ width: dimensions.width, height: dimensions.height }} 
         className="flex items-center justify-center bg-gray-900 text-white"
       >
-        Loading 3D Scene...
+        <div className="text-center space-y-4">
+          <div className="text-xl font-semibold">Loading 3D Scene & Media...</div>
+          {mediaPreload.total > 0 && (
+            <div className="w-64 mx-auto">
+              <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-full bg-green-400 transition-all" style={{ width: `${(mediaPreload.progress * 100).toFixed(0)}%` }} />
+              </div>
+              <div className="mt-2 text-sm text-gray-300">{mediaPreload.loaded} / {mediaPreload.total}</div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
