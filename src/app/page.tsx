@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { useProjectData } from "../hooks/useProjectData";
-import PixelationEffect from "../components/PixelationEffect";
 
 // Dynamically import ThreePlayer to avoid SSR issues
 const ThreePlayer = dynamic(() => import("../components/ThreePlayer"), {
@@ -44,8 +43,6 @@ function ThreeScene() {
 
 export default function HomePage() {
   return (
-    <PixelationEffect tileSize={2} sigmaGauss={0}>
       <ThreeScene />
-    </PixelationEffect>
   );
 }
