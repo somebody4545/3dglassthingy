@@ -3,7 +3,7 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useRef, useEffect, useState, useCallback } from "react";
 import * as THREE from 'three';
-import { sectionData } from './sectionData';
+import { sectionData, panelPages } from './sectionData';
 import SelectorObject from "./SelectorObject";
 import { dispatch, CAMERA_CONFIGS, TRANSITION_CONFIG } from "./utils";
 import type { SceneContentProps } from "./types";
@@ -28,7 +28,8 @@ export default function SceneContent({
   scripts, 
   onInit, 
   onSectionSelect, 
-  selectedSection: parentSelectedSection 
+  selectedSection: parentSelectedSection,
+  pageIndex
 }: SceneContentProps) {
   const { scene, camera, gl: renderer } = useThree();
   const [isLoaded, setIsLoaded] = useState(false);
@@ -36,6 +37,46 @@ export default function SceneContent({
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isInIntroView, setIsInIntroView] = useState(false);
   const [selectedSection, setSelectedSection] = useState<number | null>(null);
+  const [, forceRerender] = useState(0);
+  // Page transition state
+  interface PageTransitionState {
+    stage: 'idle' | 'leaving' | 'entering';
+    prevPage: number | null;
+    nextPage: number | null;
+    progress: number; // base timeline 0..1 (before per-item delay)
+  }
+  const pageTransition = useRef<PageTransitionState>({ stage: 'idle', prevPage: null, nextPage: null, progress: 0 });
+  const currentPageRef = useRef(pageIndex);
+  const lastRequestedRef = useRef(pageIndex);
+  const pageQueueRef = useRef<number[]>([]);
+  const perItemDelay = 0.02; // faster stagger
+  const travelDistance = 25; // travel distance retained
+  const baseDuration = 0.6; // shorter duration per panel
+  const easeOutExpo = (x: number) => (x <= 0 ? 0 : (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x)));
+
+  // Helper to start next queued transition if idle
+  const startNextTransition = useCallback(() => {
+    if (pageTransition.current.stage !== 'idle') return;
+    // Pull next distinct target
+    while (pageQueueRef.current.length) {
+      const target = pageQueueRef.current.shift();
+      if (target != null && target !== currentPageRef.current) {
+        pageTransition.current = { stage: 'leaving', prevPage: currentPageRef.current, nextPage: target, progress: 0 };
+        break;
+      }
+    }
+  }, []);
+
+  // Queue page changes
+  useEffect(() => {
+    if (pageIndex !== lastRequestedRef.current) {
+      // Push to queue if not duplicate of last queued
+      const q = pageQueueRef.current;
+      if (q[q.length - 1] !== pageIndex) q.push(pageIndex);
+      lastRequestedRef.current = pageIndex;
+      startNextTransition();
+    }
+  }, [pageIndex, startNextTransition]);
 
   // Adaptive FOV calculation (same as in ThreePlayer)
   const baseAspect = 16 / 9;
@@ -386,6 +427,33 @@ export default function SceneContent({
     }
 
     timeRef.current.prevTime = time;
+
+    // Page transition progression
+  if (pageTransition.current.stage !== 'idle') {
+      const state = pageTransition.current;
+      const deltaSec = 1 / 30; // fixed due to fps cap
+      state.progress += deltaSec / baseDuration;
+      const prevCfg = state.prevPage != null ? panelPages[state.prevPage] : undefined;
+      const nextCfg = state.nextPage != null ? panelPages[state.nextPage] : undefined;
+  const prevCount = prevCfg?.sections.length ?? 0;
+  const nextCount = nextCfg?.sections.length ?? 0;
+      const prevSpan = (prevCount - 1) * perItemDelay + 1; // last item's end time relative to base
+      const nextSpan = (nextCount - 1) * perItemDelay + 1;
+      if (state.stage === 'leaving' && state.progress >= prevSpan) {
+        state.stage = 'entering';
+        state.progress = 0;
+      } else if (state.stage === 'entering' && state.progress >= nextSpan) {
+    // Finalize current page
+    currentPageRef.current = state.nextPage ?? currentPageRef.current;
+    state.stage = 'idle';
+    state.prevPage = currentPageRef.current;
+    state.nextPage = null;
+    state.progress = 0;
+    // Immediately start next if queued
+    startNextTransition();
+      }
+      forceRerender(v => v + 1);
+    }
   });
 
   // Event handlers
@@ -434,46 +502,67 @@ export default function SceneContent({
   return (
     <>
       {/* Replace the original selector with a transmission material version */}
-      {selectorGeometry && 
-        Array.from({ length: 11 }, (_, i) => {
-          const baseX = 10.353598594665527;
-          const xPosition = baseX - i * 2;
-          
-          // Determine the click handler based on index and current view
-          let clickHandler;
-          if (i === 0) {
-            // Only the first object (Section 0) has click functionality
-            // From sideview: transitions to intro view
-            // From intro view: transitions back to sideview ("Back to Start")
-            clickHandler = isInIntroView ? transitionToSideviewCamera : transitionToIntroCamera;
-          } else if (isInIntroView && selectedSection === null) {
-            // Informational sections (1-10) show details when not in detail view
-            clickHandler = () => showSectionDetails(i);
-          }
-          // All other sections (1-10) have no click functionality when in detail view
-          
-          // Determine visibility
-          const isHidden = selectedSection !== null && selectedSection !== i;
-          const isSelected = selectedSection === i;
-          
-          return (
-            <SelectorObject 
-              key={`selector-${i}`}
-              position={[xPosition, -0.09537577629089355, 1.5677690505981445 + (i * 0.1)]} // Stagger Z position to prevent overlap issues
-              rotation={randomRotations[i]}
-              scale={[2.147387316260944, 2.147387316260944, 2.1473870277404785]}
-              geometry={selectorGeometry.clone()}
-              onClick={clickHandler}
-              enableHover={isInIntroView && selectedSection === null} // Only enable hover in intro view when not in detail view
-              sectionIndex={i}
-              isSelected={isSelected}
-              isHidden={isHidden}
-              imageSrc={sectionData.find(s => s.index === i)?.image}
-              videoSrc={sectionData.find(s => s.index === i)?.video}
-            />
-          );
-        })
-      }
+      {selectorGeometry && (() => {
+        const current = pageTransition.current;
+  const baseX = 0.853598594665527;
+        const pagesToRender: Array<{page: number; phase: 'static' | 'leaving' | 'entering';}> = [];
+        if (current.stage === 'idle') {
+          pagesToRender.push({ page: currentPageRef.current, phase: 'static' });
+        } else {
+          if (current.stage === 'leaving' && current.prevPage != null) pagesToRender.push({ page: current.prevPage, phase: 'leaving' });
+          if (current.stage === 'entering' && current.nextPage != null) pagesToRender.push({ page: current.nextPage, phase: 'entering' });
+        }
+        return pagesToRender.flatMap(({ page, phase }) => {
+          const cfg = panelPages[page];
+          if (!cfg) return [];
+          const spacingMultiplier = cfg.spacingMultiplier ?? 1;
+          const xSpacing = 2 * spacingMultiplier;
+          const actualCount = cfg.sections.length;
+          const half = (actualCount - 1) / 2; // simple symmetric center around baseX
+          return cfg.sections.map((section, slot) => {
+            const i = section.index;
+            // Center this page's items around the virtual 10-wide center
+            const xPosition = baseX - (slot - half) * xSpacing;
+            let yOffset = -0.09537577629089355;
+            if (phase === 'leaving') {
+              const localStart = slot * perItemDelay;
+              const localT = Math.min(Math.max(current.progress - localStart, 0) / 1, 1);
+              const eased = easeOutExpo(localT);
+              yOffset -= eased * travelDistance;
+            } else if (phase === 'entering') {
+              const reverseSlot = (cfg.sections.length - 1) - slot;
+              const localStart = reverseSlot * perItemDelay;
+              const localT = Math.min(Math.max(current.progress - localStart, 0) / 1, 1);
+              const eased = easeOutExpo(localT);
+              yOffset -= (travelDistance - eased * travelDistance);
+            }
+            let clickHandler: (() => void) | undefined;
+            if (i === 0) {
+              clickHandler = isInIntroView ? transitionToSideviewCamera : transitionToIntroCamera;
+            } else if (isInIntroView && selectedSection === null) {
+              clickHandler = () => showSectionDetails(i);
+            }
+            const isHidden = selectedSection !== null && selectedSection !== i;
+            const isSelected = selectedSection === i;
+            return (
+              <SelectorObject
+                key={`page-${page}-phase-${phase}-i-${i}`}
+                position={[xPosition, yOffset, 1.5677690505981445 + (slot * 0.1)]}
+                rotation={randomRotations[i]}
+                scale={[2.147387316260944, 2.147387316260944, 2.1473870277404785]}
+                geometry={selectorGeometry.clone()}
+                onClick={clickHandler}
+                enableHover={isInIntroView && selectedSection === null && phase !== 'leaving'}
+                sectionIndex={i}
+                isSelected={isSelected}
+                isHidden={isHidden}
+                imageSrc={section.image ?? sectionData.find(s => s.index === i)?.image}
+                videoSrc={section.video ?? sectionData.find(s => s.index === i)?.video}
+              />
+            );
+          });
+        });
+      })()}
     </>
   );
 }

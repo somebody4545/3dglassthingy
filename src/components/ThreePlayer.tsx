@@ -7,6 +7,7 @@ import * as THREE from "three";
 import SceneContent from "./SceneContent";
 import DetailView from "./DetailView";
 import type { PlayerProps } from "./types";
+import { sectionData, panelPages } from './sectionData';
 
 // Main ThreePlayer component
 export default function ThreePlayer({ 
@@ -23,6 +24,10 @@ export default function ThreePlayer({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const mediaPreload = usePreloadSectionMedia();
+  const [pageIndex, setPageIndex] = useState(0);
+  const totalPages = panelPages.length;
+  const canPageUp = pageIndex > 0;
+  const canPageDown = pageIndex < totalPages - 1;
   
   // Base FOV for 16:9 aspect ratio (this will be the minimum)
   const baseFOV = projectData?.camera?.object?.fov ?? 50;
@@ -161,6 +166,7 @@ export default function ThreePlayer({
           scripts={projectData?.scripts}
           onSectionSelect={setSelectedSection}
           selectedSection={selectedSection}
+          pageIndex={pageIndex}
         />
       </Canvas>
 
@@ -169,6 +175,37 @@ export default function ThreePlayer({
         selectedSection={selectedSection}
         onClose={() => setSelectedSection(null)}
       />
+
+      {/* Pagination Controls (centered) */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center mt-50">
+        <div className="pointer-events-none flex flex-col items-center">
+          <button
+            type="button"
+            onClick={() => canPageUp && setPageIndex(p => Math.max(0, p - 1))}
+            disabled={!canPageUp}
+            className={`pointer-events-auto mb-2 flex h-20 w-20 items-center justify-center rounded-full border border-white/30 bg-black/40 text-4xl font-semibold text-white shadow-[0_0_0_2px_rgba(255,255,255,0.05),0_8px_30px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl transition hover:bg-white/15 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.15),0_10px_34px_-8px_rgba(0,0,0,0.75)] disabled:cursor-not-allowed disabled:opacity-30`}
+            aria-label="Previous Page"
+          >↑</button>
+          <div className="mb-4 flex flex-col items-center text-center leading-tight">
+            <div className="text-2xl font-semibold tracking-wide text-white/85">
+              {pageIndex + 1} / {totalPages}
+            </div>
+            <div className="mt-1 max-w-[24rem] text-2xl font-medium uppercase tracking-[0.25em] text-white/55">
+              {panelPages[pageIndex]?.label}
+            </div>
+          </div>
+                  <div className="mt-[30vh] pointer-events-none"> 
+
+        </div>
+          <button
+            type="button"
+            onClick={() => canPageDown && setPageIndex(p => Math.min(totalPages - 1, p + 1))}
+            disabled={!canPageDown}
+            className={`pointer-events-auto flex h-20 w-20 items-center justify-center rounded-full border border-white/30 bg-black/40 text-4xl font-semibold text-white shadow-[0_0_0_2px_rgba(255,255,255,0.05),0_8px_30px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl transition hover:bg-white/15 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.15),0_10px_34px_-8px_rgba(0,0,0,0.75)] disabled:cursor-not-allowed disabled:opacity-30`}
+            aria-label="Next Page"
+          >↓</button>
+        </div>
+      </div>
     </div>
   );
 }

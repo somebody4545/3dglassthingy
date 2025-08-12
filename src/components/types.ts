@@ -63,6 +63,7 @@ export interface SceneContentProps {
   onInit?: () => void;
   onSectionSelect?: (section: number | null) => void;
   selectedSection?: number | null;
+  pageIndex: number; // current panel page
 }
 
 export interface SelectorObjectProps {
@@ -90,4 +91,12 @@ export interface SectionInfo {
   description: string;
   image?: string;
   video?: string;
+}
+
+export interface PanelPageConfig {
+  sections: SectionInfo[]; // pasted section objects for this page (placeholders allowed)
+  spacingMultiplier?: number;
+  id?: string;
+  label?: string;
+  description?: string;
 }
