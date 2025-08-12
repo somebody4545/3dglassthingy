@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { useEffect, useState, useLayoutEffect, useRef } from "react";
+import { useEffect, useState, useLayoutEffect, useRef, useCallback } from "react";
 import * as THREE from "three";
 import SceneContent from "./SceneContent";
 import DetailView from "./DetailView";
@@ -27,7 +27,7 @@ export default function ThreePlayer({
   const baseAspect = 16 / 9;
   
   // Calculate FOV based on aspect ratio to maintain minimum viewing angles
-  const calculateFOV = (aspect: number) => {
+  const calculateFOV = useCallback((aspect: number) => {
     // Calculate what the horizontal FOV would be at the base aspect ratio
     const baseVerticalFOV = baseFOV;
     const baseHorizontalFOV = 2 * Math.atan(Math.tan((baseVerticalFOV * Math.PI) / 360) * baseAspect) * (180 / Math.PI);
@@ -37,7 +37,7 @@ export default function ThreePlayer({
     
     // Use the larger of the two FOVs to ensure both dimensions meet their minimum
     return Math.max(baseVerticalFOV, requiredVerticalFOVForHorizontal);
-  };
+  }, [baseFOV, baseAspect]);
 
   // Use layoutEffect to set dimensions synchronously before paint
   useLayoutEffect(() => {

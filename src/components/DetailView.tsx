@@ -2,8 +2,10 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import type { DetailViewProps } from "./types";
+import { getSectionInfo } from './sectionData';
 
 export default function DetailView({ selectedSection, onClose }: DetailViewProps) {
+  const info = selectedSection !== null ? getSectionInfo(selectedSection) : undefined;
   return (
     <AnimatePresence>
       {selectedSection !== null && (
@@ -55,7 +57,7 @@ export default function DetailView({ selectedSection, onClose }: DetailViewProps
                 textShadow: '0 0 20px rgba(153, 255, 153, 0.5)'
               }}
             >
-              Section {selectedSection}
+              {info?.title ?? `Section ${selectedSection}`}
             </motion.h1>
             
             <motion.div
@@ -70,16 +72,52 @@ export default function DetailView({ selectedSection, onClose }: DetailViewProps
                 margin: '0 auto 50px'
               }}
             >
-              <p style={{ marginBottom: '25px' }}>
-                This is detailed information about Section {selectedSection}. Here you can include comprehensive details about this particular section of your project.
-              </p>
-              <p style={{ marginBottom: '25px' }}>
-                You can customize this content to show relevant information, images, videos, or any other media related to this section.
-              </p>
+              {info?.description && (
+                <p style={{ marginBottom: '25px' }}>
+                  {info.description}
+                </p>
+              )}
+              {info?.image && (
+                <motion.img 
+                  src={info.image} 
+                  alt={info.title} 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.45 }}
+                  style={{
+                    width: '100%',
+                    maxWidth: '500px',
+                    borderRadius: '16px',
+                    margin: '0 auto 30px',
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.4)' 
+                  }}
+                />
+              )}
+              {info?.video && (
+                <motion.video 
+                  key={info.video}
+                  src={info.video}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  style={{
+                    width: '100%',
+                    maxWidth: '600px',
+                    borderRadius: '20px',
+                    margin: '0 auto 40px',
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
+                    display: 'block'
+                  }}
+                />
+              )}
               <ul style={{ paddingLeft: '20px', marginBottom: '25px', textAlign: 'left' }}>
-                <li style={{ marginBottom: '10px' }}>Feature 1 of Section {selectedSection}</li>
-                <li style={{ marginBottom: '10px' }}>Feature 2 of Section {selectedSection}</li>
-                <li style={{ marginBottom: '10px' }}>Feature 3 of Section {selectedSection}</li>
+                <li style={{ marginBottom: '10px' }}>Feature 1 of {info?.title ?? `Section ${selectedSection}`}</li>
+                <li style={{ marginBottom: '10px' }}>Feature 2 of {info?.title ?? `Section ${selectedSection}`}</li>
+                <li style={{ marginBottom: '10px' }}>Feature 3 of {info?.title ?? `Section ${selectedSection}`}</li>
               </ul>
             </motion.div>
             

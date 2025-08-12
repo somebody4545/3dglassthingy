@@ -2,7 +2,8 @@
 
 import { useFrame, useThree } from "@react-three/fiber";
 import { useRef, useEffect, useState, useCallback } from "react";
-import * as THREE from "three";
+import * as THREE from 'three';
+import { sectionData } from './sectionData';
 import SelectorObject from "./SelectorObject";
 import { dispatch, CAMERA_CONFIGS, TRANSITION_CONFIG } from "./utils";
 import type { SceneContentProps } from "./types";
@@ -42,7 +43,7 @@ export default function SceneContent({
   // Track current base FOV (the FOV that would be used at 16:9)
   const currentBaseFOVRef = useRef<number>(CAMERA_CONFIGS.sideview.fov);
   
-  const calculateAdaptiveFOV = (baseFOV: number, aspect: number) => {
+  const calculateAdaptiveFOV = useCallback((baseFOV: number, aspect: number) => {
     // Calculate what the horizontal FOV would be at the base aspect ratio
     const baseVerticalFOV = baseFOV;
     const baseHorizontalFOV = 2 * Math.atan(Math.tan((baseVerticalFOV * Math.PI) / 360) * baseAspect) * (180 / Math.PI);
@@ -52,7 +53,7 @@ export default function SceneContent({
     
     // Use the larger of the two FOVs to ensure both dimensions meet their minimum
     return Math.max(baseVerticalFOV, requiredVerticalFOVForHorizontal);
-  };
+  }, [baseAspect]);
 
   // Sync with parent component's selectedSection
   useEffect(() => {
@@ -467,6 +468,8 @@ export default function SceneContent({
               sectionIndex={i}
               isSelected={isSelected}
               isHidden={isHidden}
+              imageSrc={sectionData.find(s => s.index === i)?.image}
+              videoSrc={sectionData.find(s => s.index === i)?.video}
             />
           );
         })

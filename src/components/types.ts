@@ -70,14 +70,24 @@ export interface SelectorObjectProps {
   rotation?: [number, number, number];
   scale?: [number, number, number];
   geometry?: THREE.BufferGeometry;
-  onClick?: () => void;
+  onClick?: (sectionInfo?: SectionInfo) => void;
   enableHover?: boolean;
   sectionIndex?: number;
   isSelected?: boolean;
   isHidden?: boolean;
+  imageSrc?: string; // static image texture path
+  videoSrc?: string; // video texture path for hover
 }
 
 export interface DetailViewProps {
   selectedSection: number | null;
   onClose: () => void;
+}
+
+export interface SectionInfo {
+  index: number;
+  title: string;
+  description: string;
+  image?: string;
+  video?: string;
 }

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useSpring, animated } from "@react-spring/three";
 import { MeshTransmissionMaterial, Html } from "@react-three/drei";
-import type { SelectorObjectProps } from "./types";
+import type { SelectorObjectProps, SectionInfo } from "./types";
 
 // Component to create a selector object with transmission material using extracted geometry
 export default function SelectorObject({ 
@@ -16,10 +16,17 @@ export default function SelectorObject({
   enableHover = true,
   sectionIndex = 0,
   isSelected = false,
-  isHidden = false
+  isHidden = false,
+  imageSrc,
+  videoSrc
 }: SelectorObjectProps) {
   const [hovered, setHovered] = useState(false);
   const [textTexture, setTextTexture] = useState<THREE.CanvasTexture | null>(null);
+  const [imageTexture, setImageTexture] = useState<THREE.Texture | null>(null);
+  const [videoTexture, setVideoTexture] = useState<THREE.VideoTexture | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [activeMap, setActiveMap] = useState<THREE.Texture | null>(null);
+  const sectionInfoRef = useRef<SectionInfo | undefined>(undefined);
   
   useEffect(() => {
     // Only create texture if we don't have one or if sectionIndex actually changed
@@ -75,6 +82,88 @@ export default function SelectorObject({
       texture.dispose();
     };
   }, [sectionIndex, textTexture]); // Keep sectionIndex dependency but add optimization above
+
+  // Load image texture (static)
+  useEffect(() => {
+    if (!imageSrc) return;
+    const loader = new THREE.TextureLoader();
+    let cancelled = false;
+    loader.load(imageSrc, (tex) => {
+      if (cancelled) return;
+  // Rotate 90° clockwise and flip horizontally
+  tex.center.set(0.5, 0.5);
+  tex.rotation = -Math.PI / 2; // clockwise
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.flipY = false; // prevent vertical mirroring issues
+      tex.needsUpdate = true;
+      setImageTexture(tex);
+      setActiveMap(tex); // default map
+    });
+    return () => { cancelled = true; };
+  }, [imageSrc]);
+
+  // Prepare video texture (only create once) and toggle between image/video on hover
+  useEffect(() => {
+    if (!videoSrc) return;
+    if (hovered) {
+      // If we don't have a video texture yet, create it
+      if (!videoTexture) {
+        const video = document.createElement('video');
+        video.src = videoSrc;
+        video.crossOrigin = 'anonymous';
+        video.loop = true;
+        video.muted = true; // autoplay requires muted
+        video.playsInline = true;
+        video.preload = 'auto';
+        videoRef.current = video;
+  void video.play().catch(() => { /* ignore autoplay block */ });
+        const vTex = new THREE.VideoTexture(video);
+        vTex.minFilter = THREE.LinearFilter;
+        vTex.magFilter = THREE.LinearFilter;
+  // Rotate 90° clockwise (no horizontal or vertical mirroring)
+        vTex.center.set(0.5, 0.5);
+        vTex.rotation = -Math.PI / 2;
+        vTex.wrapS = vTex.wrapT = THREE.RepeatWrapping;
+  vTex.repeat.x = 1; // no horizontal flip
+  vTex.repeat.y = 1; // upright
+        vTex.flipY = false; // prevent default vertical flip
+        vTex.needsUpdate = true;
+        setVideoTexture(vTex);
+        setActiveMap(vTex);
+      } else {
+        // Reuse existing video texture
+        if (videoRef.current?.paused) {
+          void videoRef.current.play().catch(() => { /* ignore */ });
+        }
+        // Normalize existing texture orientation if previously created with vertical flip
+        if (videoTexture) {
+          videoTexture.repeat.x = 1;
+          videoTexture.repeat.y = 1;
+          videoTexture.needsUpdate = true;
+        }
+        setActiveMap(videoTexture);
+      }
+    } else {
+      // Not hovered -> show image (fallback to text texture handled below in material)
+      if (imageTexture) {
+        setActiveMap(imageTexture);
+      } else if (videoRef.current) {
+        // Pause video to save resources
+        videoRef.current.pause();
+      }
+    }
+  }, [hovered, videoSrc, videoTexture, imageTexture]);
+
+  // Compose section info for click callback
+  useEffect(() => {
+    sectionInfoRef.current = {
+      index: sectionIndex,
+      title: `Section ${sectionIndex}`,
+      description: `Details about section ${sectionIndex}.`,
+      image: imageSrc,
+      video: videoSrc
+    };
+  }, [sectionIndex, imageSrc, videoSrc]);
   
   // Calculate position based on selection state
   const finalPosition = isSelected 
@@ -108,9 +197,9 @@ export default function SelectorObject({
       scale={finalScale}
       name="selector"
       onClick={(e) => {
-        e.stopPropagation(); // Prevent event from bubbling to objects behind
+        e.stopPropagation();
         if (onClick) {
-          onClick();
+          onClick(sectionInfoRef.current);
         }
       }}
       onPointerOver={(e: { stopPropagation: () => void }) => {
@@ -151,8 +240,8 @@ export default function SelectorObject({
         distortion={0.0}
         distortionScale={0.0}
         temporalDistortion={0.0}
-        map={textTexture}
-        color="#aaffaa"
+  map={activeMap ?? textTexture}
+        color="#ffffff"
         side={THREE.DoubleSide}
         key={sectionIndex} // Force re-render when sectionIndex changes
       />
