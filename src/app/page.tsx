@@ -43,6 +43,19 @@ function ThreeScene() {
 
 export default function HomePage() {
   return (
+    <>
+      {/* site not working link in the corner */}
+      <div className="fixed top-4 right-4 z-50">
+        <a 
+          href="https://ineshd.com/"
+          >
+          <div className="px-3 py-1 bg-black/50 text-white rounded-md hover:bg-black/70 transition">
+            Site not working? Visit ineshd.com
+          </div>  
+          </a>
+      </div>
       <ThreeScene />
+    </>
+
   );
 }

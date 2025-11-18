@@ -5,7 +5,7 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import * as THREE from 'three';
 import { sectionData, panelPages } from './sectionData';
 import SelectorObject from "./SelectorObject";
-import { dispatch, CAMERA_CONFIGS, TRANSITION_CONFIG } from "./utils";
+import { dispatch, CAMERA_CONFIGS, TRANSITION_CONFIG, FOVController, CameraTransitionController } from "./utils";
 import type { SceneContentProps } from "./types";
 
 interface EventHandlers {
@@ -29,15 +29,26 @@ export default function SceneContent({
   onInit, 
   onSectionSelect, 
   selectedSection: parentSelectedSection,
-  pageIndex
+  pageIndex,
+  isMobile,
+  sliderSelectedSection,
+  onSliderSelect,
+  onTransitionChange,
+  fovController,
+  isExperienceStarted,
+  setIsExperienceStarted
 }: SceneContentProps) {
   const { scene, camera, gl: renderer } = useThree();
   const [isLoaded, setIsLoaded] = useState(false);
   const [selectorGeometry, setSelectorGeometry] = useState<THREE.BufferGeometry | null>(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
   const [isInIntroView, setIsInIntroView] = useState(false);
   const [selectedSection, setSelectedSection] = useState<number | null>(null);
   const [, forceRerender] = useState(0);
+  const transitionController = useRef(new CameraTransitionController());
+  const [transitionState, setTransitionState] = useState(false); // For triggering re-renders
+  const geometryPoolRef = useRef<Map<string, THREE.BufferGeometry>>(new Map());
+  // Compute isTransitioning from the transition controller
+  const isTransitioning = transitionController.current.isCurrentlyTransitioning() || transitionState;
   // Page transition state
   interface PageTransitionState {
     stage: 'idle' | 'leaving' | 'entering';
@@ -53,6 +64,19 @@ export default function SceneContent({
   const travelDistance = 25; // travel distance retained
   const baseDuration = 0.6; // shorter duration per panel
   const easeOutExpo = (x: number) => (x <= 0 ? 0 : (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x)));
+
+  // Get geometry from pool or create new clone
+  const getGeometryForSelector = useCallback((key: string): THREE.BufferGeometry | undefined => {
+    if (geometryPoolRef.current.has(key)) {
+      return geometryPoolRef.current.get(key);
+    }
+    if (selectorGeometry) {
+      const cloned = selectorGeometry.clone();
+      geometryPoolRef.current.set(key, cloned);
+      return cloned;
+    }
+    return undefined;
+  }, [selectorGeometry]);
 
   // Helper to start next queued transition if idle
   const startNextTransition = useCallback(() => {
@@ -70,38 +94,99 @@ export default function SceneContent({
   // Queue page changes
   useEffect(() => {
     if (pageIndex !== lastRequestedRef.current) {
-      // Push to queue if not duplicate of last queued
-      const q = pageQueueRef.current;
-      if (q[q.length - 1] !== pageIndex) q.push(pageIndex);
+      // Clear the queue and load the last requested category immediately
+      pageQueueRef.current = [];
       lastRequestedRef.current = pageIndex;
-      startNextTransition();
+      
+      // If currently transitioning, interrupt and start new transition
+      if (pageTransition.current.stage !== 'idle') {
+        // Reset transition state
+        pageTransition.current = { stage: 'idle', prevPage: currentPageRef.current, nextPage: null, progress: 0 };
+      }
+      
+      // Start transition to the new page immediately
+      if (pageIndex !== currentPageRef.current) {
+        pageTransition.current = { stage: 'leaving', prevPage: currentPageRef.current, nextPage: pageIndex, progress: 0 };
+      }
     }
-  }, [pageIndex, startNextTransition]);
+  }, [pageIndex]);
 
-  // Adaptive FOV calculation (same as in ThreePlayer)
-  const baseAspect = 16 / 9;
-  
-  // Track current base FOV (the FOV that would be used at 16:9)
-  const currentBaseFOVRef = useRef<number>(CAMERA_CONFIGS.sideview.fov);
-  
-  const calculateAdaptiveFOV = useCallback((baseFOV: number, aspect: number) => {
-    // Calculate what the horizontal FOV would be at the base aspect ratio
-    const baseVerticalFOV = baseFOV;
-    const baseHorizontalFOV = 2 * Math.atan(Math.tan((baseVerticalFOV * Math.PI) / 360) * baseAspect) * (180 / Math.PI);
-    
-    // Calculate what vertical FOV we need to maintain the base horizontal FOV at current aspect
-    const requiredVerticalFOVForHorizontal = 2 * Math.atan(Math.tan((baseHorizontalFOV * Math.PI) / 360) / aspect) * (180 / Math.PI);
-    
-    // Use the larger of the two FOVs to ensure both dimensions meet their minimum
-    return Math.max(baseVerticalFOV, requiredVerticalFOVForHorizontal);
-  }, [baseAspect]);
-
-  // Sync with parent component's selectedSection
+  // Cleanup geometry pool when selectorGeometry changes
   useEffect(() => {
-    setSelectedSection(parentSelectedSection ?? null);
-  }, [parentSelectedSection]);
-  
-  // Pre-generate random rotations once (skip first object)
+    return () => {
+      geometryPoolRef.current.forEach((geometry) => {
+        geometry.dispose();
+      });
+      geometryPoolRef.current.clear();
+    };
+  }, [selectorGeometry]);
+
+  // Initialize transition controller
+  useEffect(() => {
+    if (camera && fovController) {
+      transitionController.current.setCamera(camera as THREE.PerspectiveCamera);
+      transitionController.current.setFOVController(fovController);
+    }
+  }, [camera, fovController]);
+
+  // Camera follow for selected section (now default behavior)
+  useEffect(() => {
+    if (sliderSelectedSection == null || !selectorGeometry || !camera) return;
+
+    // If already transitioning, stop it immediately at current position
+    if (isTransitioning) {
+      transitionController.current.stopTransitionAtCurrent();
+    }
+
+    // Only look in the current page for the selected section
+    const pageCfg = panelPages[pageIndex];
+    if (!pageCfg || !pageCfg.sections) return;
+
+    const foundSlot = pageCfg.sections.findIndex(s => s.index === sliderSelectedSection);
+    if (foundSlot < 0) return;
+
+    const cfg = pageCfg;
+    const spacingMultiplier = cfg.spacingMultiplier ?? 1;
+    const xSpacing = 2 * spacingMultiplier;
+    const actualCount = cfg.sections.length;
+    const half = (actualCount - 1) / 2;
+    const baseX = 0.853598594665527;
+    const xPosition = baseX - (foundSlot - half) * xSpacing;
+    const yOffset = -0.09537577629089355;
+    const zPos = 1.5677690505981445 + (foundSlot * 0.1);
+
+    const selectorPos = new THREE.Vector3(xPosition, yOffset, zPos);
+
+    // Desired camera target: closer and slightly above the selector on mobile
+    const camOffset = new THREE.Vector3(0, 0.8, 9.5);
+    const targetPos = selectorPos.clone().add(camOffset);
+
+    // Compute quaternion that looks at the selector position
+    const tempCam = new THREE.PerspectiveCamera();
+    tempCam.position.copy(targetPos);
+    tempCam.lookAt(selectorPos);
+    tempCam.updateMatrixWorld();
+
+    const targetBaseFOV = isMobile ? 60 : 60; // Base FOV values, FOV controller handles aspect ratio adaptation
+
+    const success = transitionController.current.startTransition(
+      targetPos,
+      tempCam.quaternion,
+      targetBaseFOV,
+      () => {
+        setTransitionState(false);
+        fovController?.setBaseFOV(targetBaseFOV);
+        onTransitionChange?.(false);
+        console.log('Camera follow transition completed');
+      }
+    );
+
+    if (success) {
+      setTransitionState(true);
+      onTransitionChange?.(true);
+      console.log('Starting camera follow transition');
+    }
+  }, [isMobile, sliderSelectedSection, selectorGeometry, camera, fovController, onTransitionChange, isTransitioning, pageIndex]);  // Pre-generate random rotations once (skip first object)
   const [randomRotations] = useState(() => 
     Array.from({ length: 11 }, (_, i) => {
       if (i === 0) {
@@ -128,79 +213,92 @@ export default function SceneContent({
     update: []
   });
   const timeRef = useRef({ startTime: 0, prevTime: 0 });
-  const transitionRef = useRef({
-    isTransitioning: false,
-    startPos: new THREE.Vector3(),
-    targetPos: new THREE.Vector3(),
-    startQuaternion: new THREE.Quaternion(),
-    targetQuaternion: new THREE.Quaternion(),
-    startFov: 0,
-    targetFov: 0,
-    startTime: 0,
-    duration: TRANSITION_CONFIG.duration
-  });
 
   // Function to smoothly transition camera
   const transitionToIntroCamera = useCallback(() => {
-    if (isTransitioning || !camera) return;
-    
-    setIsTransitioning(true);
-    transitionRef.current.isTransitioning = true;
-    transitionRef.current.startPos.copy(camera.position);
-    transitionRef.current.startQuaternion.copy(camera.quaternion);
-    
+    if (!camera) return;
+
+    // If already transitioning, complete it immediately
+    if (isTransitioning) {
+      transitionController.current.completeTransition();
+    }
+
     // Extract target position and rotation from intro camera matrix
     const tempPos = new THREE.Vector3();
     const tempQuat = new THREE.Quaternion();
     const tempScale = new THREE.Vector3();
     const introMatrix = new THREE.Matrix4().fromArray(CAMERA_CONFIGS.intro.matrix);
     introMatrix.decompose(tempPos, tempQuat, tempScale);
-    
-    transitionRef.current.targetPos.copy(tempPos);
-    transitionRef.current.targetQuaternion.copy(tempQuat);
-    
-    // Store base FOVs (not adaptive ones)
-    transitionRef.current.startFov = currentBaseFOVRef.current;
-    transitionRef.current.targetFov = CAMERA_CONFIGS.intro.fov;
-    transitionRef.current.startTime = performance.now();
-    
-    console.log('Starting camera transition to intro position');
-  }, [camera, isTransitioning]);
+
+    const success = transitionController.current.startTransition(
+      tempPos,
+      tempQuat,
+      CAMERA_CONFIGS.intro.fov, // Base FOV, FOV controller handles adaptation
+      () => {
+        setTransitionState(false);
+        setIsInIntroView(true);
+        fovController?.setBaseFOV(CAMERA_CONFIGS.intro.fov);
+        onTransitionChange?.(false);
+        console.log('Camera transition to intro completed');
+      }
+    );
+
+    if (success) {
+      setTransitionState(true);
+      onTransitionChange?.(true);
+      console.log('Starting camera transition to intro position');
+    }
+  }, [camera, isTransitioning, fovController, onTransitionChange]);
 
   // Function to transition back to sideview
   const transitionToSideviewCamera = useCallback(() => {
-    if (isTransitioning || !camera) return;
-    
-    setIsTransitioning(true);
-    setIsInIntroView(false); // Disable hover effects when going back to sideview
-    setSelectedSection(null); // Clear selected section
-    if (onSectionSelect) {
-      onSectionSelect(null); // Clear selection in parent component too
+    if (!camera) return;
+
+    // If already transitioning, complete it immediately
+    if (isTransitioning) {
+      transitionController.current.completeTransition();
     }
-    transitionRef.current.isTransitioning = true;
-    transitionRef.current.startPos.copy(camera.position);
-    transitionRef.current.startQuaternion.copy(camera.quaternion);
-    
+
+    setIsInIntroView(false);
+    setSelectedSection(null);
+    if (onSectionSelect) {
+      onSectionSelect(null);
+    }
+
+    // When transitioning back to start view, reset slider
+    if (onSliderSelect) {
+      onSliderSelect(null);
+    }
+
     // Extract target position and rotation from sideview camera matrix
     const tempPos = new THREE.Vector3();
     const tempQuat = new THREE.Quaternion();
     const tempScale = new THREE.Vector3();
     const sideviewMatrix = new THREE.Matrix4().fromArray(CAMERA_CONFIGS.sideview.matrix);
     sideviewMatrix.decompose(tempPos, tempQuat, tempScale);
-    
-    transitionRef.current.targetPos.copy(tempPos);
-    transitionRef.current.targetQuaternion.copy(tempQuat);
-    
-    // Store base FOVs (not adaptive ones)
-    transitionRef.current.startFov = currentBaseFOVRef.current;
-    transitionRef.current.targetFov = CAMERA_CONFIGS.sideview.fov;
-    transitionRef.current.startTime = performance.now();
-    
-    console.log('Starting camera transition back to sideview position');
-  }, [camera, isTransitioning, onSectionSelect]);
+
+    const success = transitionController.current.startTransition(
+      tempPos,
+      tempQuat,
+      CAMERA_CONFIGS.sideview.fov, // Base FOV, FOV controller handles adaptation
+      () => {
+        setTransitionState(false);
+        fovController?.setBaseFOV(CAMERA_CONFIGS.sideview.fov);
+        onTransitionChange?.(false);
+        console.log('Camera transition to sideview completed');
+      }
+    );
+
+    if (success) {
+      setTransitionState(true);
+      onTransitionChange?.(true);
+      console.log('Starting camera transition back to sideview position');
+    }
+  }, [camera, isTransitioning, onSectionSelect, onSliderSelect, pageIndex, fovController, onTransitionChange]);
 
   // Function to show section details
   const showSectionDetails = useCallback((sectionIndex: number) => {
+    console.log(`showSectionDetails called with sectionIndex: ${sectionIndex}`);
     setSelectedSection(sectionIndex);
     if (onSectionSelect) {
       onSectionSelect(sectionIndex);
@@ -252,17 +350,13 @@ export default function SceneContent({
         camera.matrix.copy(sideviewMatrix);
         camera.matrix.decompose(camera.position, camera.quaternion, camera.scale);
         
-        // Set adaptive FOV based on current aspect ratio
+        // Update the FOV controller with initial base FOV
+        fovController?.setBaseFOV(CAMERA_CONFIGS.sideview.fov);
+        
         const canvas = renderer.domElement;
         const currentAspect = canvas.clientWidth / canvas.clientHeight;
-        const adaptiveFOV = calculateAdaptiveFOV(CAMERA_CONFIGS.sideview.fov, currentAspect);
-        
-        // Update the current base FOV tracker
-        currentBaseFOVRef.current = CAMERA_CONFIGS.sideview.fov;
-        
-        (camera as THREE.PerspectiveCamera).fov = adaptiveFOV;
-        (camera as THREE.PerspectiveCamera).aspect = currentAspect;
-        camera.updateProjectionMatrix();
+        fovController?.setAspect(currentAspect);
+        fovController?.applyToCamera(camera);
         
         console.log('Camera initialized to sideview position and rotation:', camera.position, camera.rotation);
       }
@@ -339,7 +433,7 @@ export default function SceneContent({
     } catch (error) {
       console.error('Error loading scene:', error);
     }
-  }, [sceneData, cameraData, scripts, scene, camera, renderer, isLoaded, onInit, selectorGeometry, calculateAdaptiveFOV]);
+  }, [sceneData, cameraData, scripts, scene, camera, renderer, isLoaded, onInit, selectorGeometry, fovController]);
 
   // Animation loop with 30 FPS cap
   useFrame((_state) => {
@@ -360,60 +454,12 @@ export default function SceneContent({
     }
 
     // Handle camera transition
-    if (transitionRef.current.isTransitioning) {
-      const elapsed = time - transitionRef.current.startTime;
-      const progress = Math.min(elapsed / transitionRef.current.duration, 1);
-      
-      // Apply easing function
-      const easeProgress = TRANSITION_CONFIG.ease(progress);
-      
-      if (camera) {
-        // Interpolate position
-        camera.position.lerpVectors(
-          transitionRef.current.startPos,
-          transitionRef.current.targetPos,
-          easeProgress
-        );
-        
-        // Interpolate rotation using quaternion slerp
-        camera.quaternion.slerpQuaternions(
-          transitionRef.current.startQuaternion,
-          transitionRef.current.targetQuaternion,
-          easeProgress
-        );
-        
-        // Interpolate FOV with adaptive calculation
-        const canvas = renderer.domElement;
-        const currentAspect = canvas.clientWidth / canvas.clientHeight;
-        
-        // Calculate adaptive FOVs for start and target
-        const adaptiveStartFov = calculateAdaptiveFOV(transitionRef.current.startFov, currentAspect);
-        const adaptiveTargetFov = calculateAdaptiveFOV(transitionRef.current.targetFov, currentAspect);
-        
-        const currentFov = THREE.MathUtils.lerp(
-          adaptiveStartFov,
-          adaptiveTargetFov,
-          easeProgress
-        );
-        
-        (camera as THREE.PerspectiveCamera).fov = currentFov;
-        (camera as THREE.PerspectiveCamera).aspect = currentAspect;
-        camera.updateProjectionMatrix();
-      }
-      
-      if (progress >= 1) {
-        transitionRef.current.isTransitioning = false;
-        setIsTransitioning(false);
-        
-        // Update the current base FOV tracker
-        currentBaseFOVRef.current = transitionRef.current.targetFov;
-        
-        // Only enable hover effects when transitioning to intro view, not sideview
-        if (transitionRef.current.targetFov === CAMERA_CONFIGS.intro.fov) {
-          setIsInIntroView(true);
-        }
-        console.log('Camera transition completed');
-      }
+    const transitionCompleted = transitionController.current.update();
+    if (transitionCompleted) {
+      // Transition just completed
+      setTransitionState(false);
+      onTransitionChange?.(false);
+      console.log('Camera transition completed');
     }
 
     try {
@@ -536,28 +582,44 @@ export default function SceneContent({
               const eased = easeOutExpo(localT);
               yOffset -= (travelDistance - eased * travelDistance);
             }
-            let clickHandler: (() => void) | undefined;
+            let clickHandler: ((sectionInfo?: any) => void) | undefined;
             if (i === 0) {
-              clickHandler = isInIntroView ? transitionToSideviewCamera : transitionToIntroCamera;
-            } else if (isInIntroView && selectedSection === null) {
-              clickHandler = () => showSectionDetails(i);
+              clickHandler = () => {
+                if (isInIntroView) {
+                  // End experience: hide slider and return to start
+                  setIsExperienceStarted?.(false);
+                  transitionToSideviewCamera();
+                } else {
+                  // Start experience: show slider and go to first element
+                  setIsExperienceStarted?.(true);
+                  transitionToIntroCamera();
+                  // Set slider to first content section to trigger animation
+                  const pageCfg = panelPages[pageIndex];
+                  const firstContentSection = pageCfg?.sections?.find(s => s.index !== 0);
+                  onSliderSelect?.(firstContentSection?.index ?? null);
+                }
+              };
+            } else {
+              clickHandler = (sectionInfo) => showSectionDetails(i);
             }
-            const isHidden = selectedSection !== null && selectedSection !== i;
+            const isHidden = false;
             const isSelected = selectedSection === i;
+            const forceHovered = sliderSelectedSection === i;
             return (
               <SelectorObject
-                key={`page-${page}-phase-${phase}-i-${i}`}
+                key={`page-${page}-i-${i}`}
                 position={[xPosition, yOffset, 1.5677690505981445 + (slot * 0.1)]}
                 rotation={randomRotations[i]}
                 scale={[2.147387316260944, 2.147387316260944, 2.1473870277404785]}
-                geometry={selectorGeometry.clone()}
+                geometry={getGeometryForSelector(`page-${page}-i-${i}`)}
                 onClick={clickHandler}
-                enableHover={isInIntroView && selectedSection === null && phase !== 'leaving'}
+                enableHover={true}
                 sectionIndex={i}
                 isSelected={isSelected}
                 isHidden={isHidden}
                 imageSrc={section.image ?? sectionData.find(s => s.index === i)?.image}
                 videoSrc={section.video ?? sectionData.find(s => s.index === i)?.video}
+                forceHovered={forceHovered}
               />
             );
           });

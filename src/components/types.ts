@@ -1,4 +1,5 @@
 import type * as THREE from "three";
+import { FOVController } from "./utils";
 
 export interface ProjectData {
   metadata?: {
@@ -64,6 +65,13 @@ export interface SceneContentProps {
   onSectionSelect?: (section: number | null) => void;
   selectedSection?: number | null;
   pageIndex: number; // current panel page
+  isMobile?: boolean;
+  sliderSelectedSection?: number | null; // for mobile slider
+  onSliderSelect?: (section: number | null) => void; // callback to set slider selection
+  onTransitionChange?: (isTransitioning: boolean) => void;
+  fovController?: FOVController;
+  isExperienceStarted?: boolean;
+  setIsExperienceStarted?: (started: boolean) => void;
 }
 
 export interface SelectorObjectProps {
@@ -78,6 +86,7 @@ export interface SelectorObjectProps {
   isHidden?: boolean;
   imageSrc?: string; // static image texture path
   videoSrc?: string; // video texture path for hover
+  forceHovered?: boolean; // force hovered state for mobile slider
 }
 
 export interface DetailViewProps {

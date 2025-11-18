@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import * as THREE from "three";
 import { useSpring, animated } from "@react-spring/three";
 import { MeshTransmissionMaterial, Html } from "@react-three/drei";
 import type { SelectorObjectProps, SectionInfo } from "./types";
+import { textureCache } from "./TextureCache";
 
 // Component to create a selector object with transmission material using extracted geometry
 export default function SelectorObject({ 
@@ -18,22 +19,22 @@ export default function SelectorObject({
   isSelected = false,
   isHidden = false,
   imageSrc,
-  videoSrc
+  videoSrc,
+  forceHovered = false
 }: SelectorObjectProps) {
   const [hovered, setHovered] = useState(false);
-  const [textTexture, setTextTexture] = useState<THREE.CanvasTexture | null>(null);
   const [imageTexture, setImageTexture] = useState<THREE.Texture | null>(null);
   const [videoTexture, setVideoTexture] = useState<THREE.VideoTexture | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [activeMap, setActiveMap] = useState<THREE.Texture | null>(null);
   const sectionInfoRef = useRef<SectionInfo | undefined>(undefined);
   
+  // Force hovered state for mobile slider - now the ONLY source of hover
   useEffect(() => {
-    // Only create texture if we don't have one or if sectionIndex actually changed
-    if (textTexture && textTexture.userData?.sectionIndex === sectionIndex) {
-      return; // No need to recreate
-    }
-    
+    setHovered(forceHovered);
+  }, [forceHovered]);
+  
+  // Create text texture (memoized to prevent recreation)
+  const textTexture = useMemo(() => {
     // Create canvas for text texture
     const canvas = document.createElement('canvas');
     canvas.width = 512;
@@ -68,72 +69,61 @@ export default function SelectorObject({
     // Force texture update
     texture.needsUpdate = true;
     
-    // Store sectionIndex in userData to prevent unnecessary recreations
-    texture.userData = { sectionIndex };
-    
-    // Dispose old texture if it exists
-    if (textTexture) {
-      textTexture.dispose();
-    }
-    
-    setTextTexture(texture);
-    
-    return () => {
-      texture.dispose();
-    };
-  }, [sectionIndex, textTexture]); // Keep sectionIndex dependency but add optimization above
+    return texture;
+  }, [sectionIndex]);
 
-  // Load image texture (static)
+  // Load image texture (from cache)
   useEffect(() => {
-    if (!imageSrc) return;
-    const loader = new THREE.TextureLoader();
-    let cancelled = false;
-    loader.load(imageSrc, (tex) => {
-      if (cancelled) return;
-  // Rotate 90° clockwise and flip horizontally
-  tex.center.set(0.5, 0.5);
-  tex.rotation = -Math.PI / 2; // clockwise
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.flipY = false; // prevent vertical mirroring issues
-      tex.needsUpdate = true;
-      setImageTexture(tex);
-      setActiveMap(tex); // default map
-    });
-    return () => { cancelled = true; };
-  }, [imageSrc]);
+    if (!imageSrc) {
+      setImageTexture(null);
+      return;
+    }
 
-  // Prepare video texture (only create once) and toggle between image/video on hover
+    let cancelled = false;
+    textureCache.getImageTexture(imageSrc).then((texture) => {
+      if (!cancelled) {
+        setImageTexture(texture);
+        setActiveMap(texture); // default map
+      }
+    }).catch((error) => {
+      console.error(`Failed to load image texture for section ${sectionIndex}:`, error);
+    });
+
+    return () => { cancelled = true; };
+  }, [imageSrc, sectionIndex]);
+
+  // Prepare video texture (lazy load from cache) and toggle between image/video on slider selection
   useEffect(() => {
     if (!videoSrc) return;
-    if (hovered) {
-      // If we don't have a video texture yet, create it
+
+    if (forceHovered) {
+      // If we don't have a video texture yet, get it from cache
       if (!videoTexture) {
-        const video = document.createElement('video');
-        video.src = videoSrc;
-        video.crossOrigin = 'anonymous';
-        video.loop = true;
-        video.muted = true; // autoplay requires muted
-        video.playsInline = true;
-        video.preload = 'auto';
-        videoRef.current = video;
-  void video.play().catch(() => { /* ignore autoplay block */ });
-        const vTex = new THREE.VideoTexture(video);
-        vTex.minFilter = THREE.LinearFilter;
-        vTex.magFilter = THREE.LinearFilter;
-  // Rotate 90° clockwise (no horizontal or vertical mirroring)
-        vTex.center.set(0.5, 0.5);
-        vTex.rotation = -Math.PI / 2;
-        vTex.wrapS = vTex.wrapT = THREE.RepeatWrapping;
-  vTex.repeat.x = 1; // no horizontal flip
-  vTex.repeat.y = 1; // upright
-        vTex.flipY = false; // prevent default vertical flip
-        vTex.needsUpdate = true;
-        setVideoTexture(vTex);
-        setActiveMap(vTex);
+        let cancelled = false;
+        textureCache.getVideoTexture(videoSrc).then((vTex) => {
+          if (!cancelled) {
+            setVideoTexture(vTex);
+            setActiveMap(vTex);
+            // Try to play the video
+            const videoElement = textureCache.getVideoElement(videoSrc);
+            if (videoElement) {
+              void videoElement.play().catch(() => { /* ignore autoplay block */ });
+            }
+          }
+        }).catch((error) => {
+          console.error(`Failed to load video texture for section ${sectionIndex}:`, error);
+          // Fallback to image texture if video fails
+          if (imageTexture) {
+            setActiveMap(imageTexture);
+          }
+        });
+
+        return () => { cancelled = true; };
       } else {
         // Reuse existing video texture
-        if (videoRef.current?.paused) {
-          void videoRef.current.play().catch(() => { /* ignore */ });
+        const videoElement = textureCache.getVideoElement(videoSrc);
+        if (videoElement?.paused) {
+          void videoElement.play().catch(() => { /* ignore */ });
         }
         // Normalize existing texture orientation if previously created with vertical flip
         if (videoTexture) {
@@ -147,12 +137,15 @@ export default function SelectorObject({
       // Not hovered -> show image (fallback to text texture handled below in material)
       if (imageTexture) {
         setActiveMap(imageTexture);
-      } else if (videoRef.current) {
+      } else if (videoSrc) {
         // Pause video to save resources
-        videoRef.current.pause();
+        const videoElement = textureCache.getVideoElement(videoSrc);
+        if (videoElement) {
+          videoElement.pause();
+        }
       }
     }
-  }, [hovered, videoSrc, videoTexture, imageTexture]);
+  }, [forceHovered, videoSrc, videoTexture, imageTexture, sectionIndex]);
 
   // Compose section info for click callback
   useEffect(() => {
@@ -166,19 +159,15 @@ export default function SelectorObject({
   }, [sectionIndex, imageSrc, videoSrc]);
   
   // Calculate position based on selection state
-  const finalPosition = isSelected 
-    ? [-8, 3, 15] as [number, number, number] // Corner position when selected
-    : position;
+  const finalPosition = position;
   
   // Calculate scale based on selection state
-  const finalScale = isSelected 
-    ? [0.8, 0.8, 0.8] as [number, number, number] // Smaller when selected
-    : scale;
+  const finalScale = scale;
   
-  // Float animation
+  // Float animation - now only triggered by slider selection
   const { positionY, rotationY } = useSpring({
-    positionY: hovered ? finalPosition[1] + 1 : finalPosition[1],
-    rotationY: hovered ? -0.9 : rotation[1],
+    positionY: forceHovered ? finalPosition[1] + 1 : finalPosition[1],
+    rotationY: forceHovered ? -0.9 : rotation[1],
     config: { tension: 300, friction: 30 }
   });
 
@@ -198,6 +187,7 @@ export default function SelectorObject({
       name="selector"
       onClick={(e) => {
         e.stopPropagation();
+        console.log(`SelectorObject clicked for section ${sectionIndex}, onClick exists: ${!!onClick}`);
         if (onClick) {
           onClick(sectionInfoRef.current);
         }
@@ -205,20 +195,15 @@ export default function SelectorObject({
       onPointerOver={(e: { stopPropagation: () => void }) => {
         e.stopPropagation(); // Prevent event from bubbling to objects behind
         document.body.style.cursor = 'pointer'; // Always show pointer cursor
-        if (enableHover && !isSelected) { // Don't hover when selected
-          setHovered(true); // Only enable animation when in intro view
-        }
+        // Hover animation now only controlled by forceHovered (slider)
       }}
       onPointerOut={(e) => {
         e.stopPropagation(); // Prevent event from bubbling to objects behind
         document.body.style.cursor = 'auto'; // Always reset cursor
-        if (enableHover && !isSelected) { // Don't hover when selected
-          setHovered(false); // Only disable animation when in intro view
-        }
+        // Hover animation now only controlled by forceHovered (slider)
       }}
       onPointerDown={(e) => {
         e.stopPropagation(); // Prevent event from bubbling to objects behind
-        setHovered(false); // Hide tooltip immediately when clicked
       }}
     >
       {geometry ? (
@@ -240,14 +225,14 @@ export default function SelectorObject({
         distortion={0.0}
         distortionScale={0.0}
         temporalDistortion={0.0}
-  map={activeMap ?? textTexture}
+        map={activeMap ?? (imageSrc || videoSrc ? null : textTexture)}
         color="#ffffff"
         side={THREE.DoubleSide}
-        key={sectionIndex} // Force re-render when sectionIndex changes
+        // key={sectionIndex} // Force re-render when sectionIndex changes
       />
       
-      {/* Tooltip */}
-      {hovered && (
+      {/* Tooltip - only shows when forceHovered (slider selection) */}
+      {forceHovered && (
         <Html
           position={[-1.5, 0, 0]} // Position above and to the left of the object
           center

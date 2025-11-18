@@ -7,6 +7,7 @@ import * as THREE from "three";
 import SceneContent from "./SceneContent";
 import DetailView from "./DetailView";
 import type { PlayerProps } from "./types";
+import { FOVController } from './utils';
 import { sectionData, panelPages } from './sectionData';
 
 // Main ThreePlayer component
@@ -25,26 +26,16 @@ export default function ThreePlayer({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const mediaPreload = usePreloadSectionMedia();
   const [pageIndex, setPageIndex] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+  const [sliderSelectedSection, setSliderSelectedSection] = useState<number | null>(null);
+  const [isExperienceStarted, setIsExperienceStarted] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const totalPages = panelPages.length;
   const canPageUp = pageIndex > 0;
   const canPageDown = pageIndex < totalPages - 1;
   
-  // Base FOV for 16:9 aspect ratio (this will be the minimum)
-  const baseFOV = projectData?.camera?.object?.fov ?? 50;
-  const baseAspect = 16 / 9;
-  
-  // Calculate FOV based on aspect ratio to maintain minimum viewing angles
-  const calculateFOV = useCallback((aspect: number) => {
-    // Calculate what the horizontal FOV would be at the base aspect ratio
-    const baseVerticalFOV = baseFOV;
-    const baseHorizontalFOV = 2 * Math.atan(Math.tan((baseVerticalFOV * Math.PI) / 360) * baseAspect) * (180 / Math.PI);
-    
-    // Calculate what vertical FOV we need to maintain the base horizontal FOV at current aspect
-    const requiredVerticalFOVForHorizontal = 2 * Math.atan(Math.tan((baseHorizontalFOV * Math.PI) / 360) / aspect) * (180 / Math.PI);
-    
-    // Use the larger of the two FOVs to ensure both dimensions meet their minimum
-    return Math.max(baseVerticalFOV, requiredVerticalFOVForHorizontal);
-  }, [baseFOV, baseAspect]);
+  // FOV Controller for managing camera FOV calculations
+  const fovController = useRef(new FOVController(projectData?.camera?.object?.fov ?? 50)).current;
 
   // Use layoutEffect to set dimensions synchronously before paint
   useLayoutEffect(() => {
@@ -54,8 +45,20 @@ export default function ThreePlayer({
         height: height ?? window.innerHeight
       });
       setIsClient(true);
+      // Mobile detection
+      setIsMobile(window.innerWidth <= 768);
     }
   }, [width, height]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, []);
 
   useEffect(() => {
     // Handle window resize and update camera
@@ -70,11 +73,11 @@ export default function ThreePlayer({
         // Update camera and renderer if they exist
         if (cameraRef.current && rendererRef.current) {
           const newAspect = newDimensions.width / newDimensions.height;
-          const newFOV = calculateFOV(newAspect);
+          fovController.setAspect(newAspect);
           
-          cameraRef.current.aspect = newAspect;
-          cameraRef.current.fov = newFOV;
-          cameraRef.current.updateProjectionMatrix();
+          // Always apply aspect ratio changes immediately, even during transitions
+          fovController.applyToCamera(cameraRef.current);
+          
           rendererRef.current.setSize(newDimensions.width, newDimensions.height);
         }
       }
@@ -84,7 +87,16 @@ export default function ThreePlayer({
       window.addEventListener('resize', handleResize);
       return () => window.removeEventListener('resize', handleResize);
     }
-  }, [width, height, calculateFOV]);
+  }, [width, height, isTransitioning, fovController]);
+
+  // Reset slider selection when page changes (only if experience started)
+  useEffect(() => {
+    if (!isExperienceStarted) return;
+    const currentPageSections = panelPages[pageIndex]?.sections ?? [];
+    // Set to first content section (index 1) if it exists, otherwise first available section
+    const firstContentSection = currentPageSections.find(s => s.index !== 0);
+    setSliderSelectedSection(firstContentSection?.index ?? null);
+  }, [pageIndex, isExperienceStarted]);
 
   if (!isClient || !mediaPreload.done) {
     return (
@@ -129,16 +141,18 @@ export default function ThreePlayer({
           
           // Set initial camera aspect ratio and FOV
           if (state.camera instanceof THREE.PerspectiveCamera) {
-            const initialAspect = dimensions.width / dimensions.height;
-            const initialFOV = calculateFOV(initialAspect);
-            
-            state.camera.aspect = initialAspect;
-            state.camera.fov = initialFOV;
-            state.camera.updateProjectionMatrix();
+            // Use actual window dimensions for initial calculation, not state dimensions
+            const initialWidth = typeof window !== 'undefined' ? window.innerWidth : 800;
+            const initialHeight = typeof window !== 'undefined' ? window.innerHeight : 600;
+            const initialAspect = initialWidth / initialHeight;
+            fovController.setAspect(initialAspect);
+            fovController.applyToCamera(state.camera);
           }
           
           // Set initial renderer size
-          state.gl.setSize(dimensions.width, dimensions.height);
+          const initialWidth = typeof window !== 'undefined' ? window.innerWidth : dimensions.width;
+          const initialHeight = typeof window !== 'undefined' ? window.innerHeight : dimensions.height;
+          state.gl.setSize(initialWidth, initialHeight);
         }}
         camera={{
           fov: projectData?.camera?.object?.fov ?? 50,
@@ -167,6 +181,13 @@ export default function ThreePlayer({
           onSectionSelect={setSelectedSection}
           selectedSection={selectedSection}
           pageIndex={pageIndex}
+          isMobile={isMobile}
+          sliderSelectedSection={sliderSelectedSection}
+          onSliderSelect={setSliderSelectedSection}
+          onTransitionChange={setIsTransitioning}
+          fovController={fovController}
+          isExperienceStarted={isExperienceStarted}
+          setIsExperienceStarted={setIsExperienceStarted}
         />
       </Canvas>
 
@@ -176,36 +197,56 @@ export default function ThreePlayer({
         onClose={() => setSelectedSection(null)}
       />
 
-      {/* Pagination Controls (centered) */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center mt-50">
-        <div className="pointer-events-none flex flex-col items-center">
-          <button
-            type="button"
-            onClick={() => canPageUp && setPageIndex(p => Math.max(0, p - 1))}
-            disabled={!canPageUp}
-            className={`pointer-events-auto mb-2 flex h-20 w-20 items-center justify-center rounded-full border border-white/30 bg-black/40 text-4xl font-semibold text-white shadow-[0_0_0_2px_rgba(255,255,255,0.05),0_8px_30px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl transition hover:bg-white/15 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.15),0_10px_34px_-8px_rgba(0,0,0,0.75)] disabled:cursor-not-allowed disabled:opacity-30`}
-            aria-label="Previous Page"
-          >↑</button>
-          <div className="mb-4 flex flex-col items-center text-center leading-tight">
-            <div className="text-2xl font-semibold tracking-wide text-white/85">
-              {pageIndex + 1} / {totalPages}
+      {/* Slider controls: only show when experience has started */}
+      {isExperienceStarted && (
+        <div className="absolute left-0 right-0 bottom-0 flex items-center justify-center p-4 z-50 pointer-events-none">
+          <div className="w-full max-w-3xl px-4">
+            <div className="flex items-center justify-center space-x-4 mb-4">
+              <button
+                type="button"
+                onClick={() => canPageUp && setPageIndex(p => Math.max(0, p - 1))}
+                disabled={!canPageUp}
+                className={`flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl font-semibold text-white shadow-[0_0_0_2px_rgba(255,255,255,0.05),0_8px_30px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl transition hover:bg-white/15 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.15),0_10px_34px_-8px_rgba(0,0,0,0.75)] disabled:cursor-not-allowed disabled:opacity-30 pointer-events-auto`}
+                aria-label="Previous Page"
+              >←</button>
+              <div className="text-center text-white/85">
+                <div className="text-lg font-semibold">{pageIndex + 1} / {totalPages}</div>
+                <div className="text-sm text-white/55">{panelPages[pageIndex]?.label}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => canPageDown && setPageIndex(p => Math.min(totalPages - 1, p + 1))}
+                disabled={!canPageDown}
+                className={`flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl font-semibold text-white shadow-[0_0_0_2px_rgba(255,255,255,0.05),0_8px_30px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl transition hover:bg-white/15 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.15),0_10px_34px_-8px_rgba(0,0,0,0.75)] disabled:cursor-not-allowed disabled:opacity-30 pointer-events-auto`}
+                aria-label="Next Page"
+              >→</button>
             </div>
-            <div className="mt-1 max-w-[24rem] text-2xl font-medium uppercase tracking-[0.25em] text-white/55">
-              {panelPages[pageIndex]?.label}
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, (panelPages[pageIndex]?.sections?.length ?? 1) - 1)}
+              value={(() => {
+                const currentPageSections = panelPages[pageIndex]?.sections ?? [];
+                const idx = currentPageSections.findIndex(s => s.index === sliderSelectedSection);
+                return idx >= 0 ? idx : 0;
+              })()}
+              onChange={(e) => {
+                const val = Number(e.currentTarget.value);
+                const currentPageSections = panelPages[pageIndex]?.sections ?? [];
+                if (currentPageSections[val]) {
+                  setSliderSelectedSection(currentPageSections[val].index);
+                }
+              }}
+              className="w-full pointer-events-auto"
+              aria-label="Select section"
+            />
+            <div className="mt-2 text-center text-sm text-white/80">
+              Section {sliderSelectedSection ?? 0}
             </div>
           </div>
-                  <div className="mt-[30vh] pointer-events-none"> 
+        </div>
+      )}
 
-        </div>
-          <button
-            type="button"
-            onClick={() => canPageDown && setPageIndex(p => Math.min(totalPages - 1, p + 1))}
-            disabled={!canPageDown}
-            className={`pointer-events-auto flex h-20 w-20 items-center justify-center rounded-full border border-white/30 bg-black/40 text-4xl font-semibold text-white shadow-[0_0_0_2px_rgba(255,255,255,0.05),0_8px_30px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl transition hover:bg-white/15 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.15),0_10px_34px_-8px_rgba(0,0,0,0.75)] disabled:cursor-not-allowed disabled:opacity-30`}
-            aria-label="Next Page"
-          >↓</button>
-        </div>
-      </div>
     </div>
   );
 }
