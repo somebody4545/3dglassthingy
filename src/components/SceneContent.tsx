@@ -618,7 +618,7 @@ export default function SceneContent({
                 isSelected={isSelected}
                 isHidden={isHidden}
                 imageSrc={section.image ?? sectionData.find(s => s.index === i)?.image}
-                videoSrc={section.video ?? sectionData.find(s => s.index === i)?.video}
+                videoSrc={section.video}
                 forceHovered={forceHovered}
               />
             );
