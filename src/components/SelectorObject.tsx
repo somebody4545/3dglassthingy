@@ -20,7 +20,8 @@ export default function SelectorObject({
   isHidden = false,
   imageSrc,
   videoSrc,
-  forceHovered = false
+  forceHovered = false,
+  onHover
 }: SelectorObjectProps) {
   const [hovered, setHovered] = useState(false);
   const [imageTexture, setImageTexture] = useState<THREE.Texture | null>(null);
@@ -194,12 +195,12 @@ export default function SelectorObject({
       }}
       onPointerOver={(e: { stopPropagation: () => void }) => {
         e.stopPropagation(); // Prevent event from bubbling to objects behind
-        document.body.style.cursor = 'pointer'; // Always show pointer cursor
+        if (onHover) onHover(sectionIndex);
         // Hover animation now only controlled by forceHovered (slider)
       }}
       onPointerOut={(e) => {
         e.stopPropagation(); // Prevent event from bubbling to objects behind
-        document.body.style.cursor = 'auto'; // Always reset cursor
+        if (onHover) onHover(null);
         // Hover animation now only controlled by forceHovered (slider)
       }}
       onPointerDown={(e) => {

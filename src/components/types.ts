@@ -72,6 +72,7 @@ export interface SceneContentProps {
   fovController?: FOVController;
   isExperienceStarted?: boolean;
   setIsExperienceStarted?: (started: boolean) => void;
+  onHover?: (section: number | null) => void;
 }
 
 export interface SelectorObjectProps {
@@ -87,6 +88,7 @@ export interface SelectorObjectProps {
   imageSrc?: string; // static image texture path
   videoSrc?: string; // video texture path for hover
   forceHovered?: boolean; // force hovered state for mobile slider
+  onHover?: (section: number | null) => void;
 }
 
 export interface DetailViewProps {

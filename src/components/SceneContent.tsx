@@ -44,7 +44,8 @@ export default function SceneContent({
   onTransitionChange,
   fovController,
   isExperienceStarted,
-  setIsExperienceStarted
+  setIsExperienceStarted,
+  onHover
 }: SceneContentProps) {
   const { scene, camera, gl: renderer } = useThree();
   const [isLoaded, setIsLoaded] = useState(false);
@@ -175,7 +176,7 @@ export default function SceneContent({
     tempCam.lookAt(selectorPos);
     tempCam.updateMatrixWorld();
 
-    const targetBaseFOV = isMobile ? 60 : 60; // Base FOV values, FOV controller handles aspect ratio adaptation
+    const targetBaseFOV = isMobile ? 80 : 80; // Base FOV values, FOV controller handles aspect ratio adaptation
 
     const success = transitionController.current.startTransition(
       targetPos,
@@ -575,7 +576,7 @@ export default function SceneContent({
           const half = (actualCount - 1) / 2; // simple symmetric center around baseX
           const firstSlot = 0;
           const firstXPosition = baseX - (firstSlot - half) * xSpacing;
-          let yOffset = -0.09537577629089355;
+          let yOffset = -3.5;
           if (phase === 'leaving') {
             const localStart = firstSlot * perItemDelay;
             const localT = Math.min(Math.max(current.progress - localStart, 0) / 1, 1);
@@ -597,7 +598,7 @@ export default function SceneContent({
             anchorY: "middle",             // optional; aligns vertically
             maxWidth: Infinity,          // optional; control wrapping
             depthOffset: 0,              // optional; for z-fighting control
-            position: [firstXPosition, yOffset-4, 1.5677690505981445 - 3] as [number, number, number]
+            position: [firstXPosition, yOffset, 1.5677690505981445 - 3] as [number, number, number]
           };
           const textElement = (
             <text {...(textProps as any)} />
@@ -657,6 +658,7 @@ export default function SceneContent({
                 imageSrc={section.image ?? sectionData.find(s => s.index === i)?.image}
                 videoSrc={section.video}
                 forceHovered={forceHovered}
+                onHover={onHover}
               />
             );
           });

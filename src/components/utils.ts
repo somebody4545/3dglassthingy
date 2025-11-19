@@ -43,7 +43,7 @@ export const TRANSITION_CONFIG = {
 // FOV Controller class to manage camera FOV calculations and updates
 export class FOVController {
   private baseFOV: number;
-  private baseAspect: number = 1;
+  private baseAspect: number = 9/16; // Base aspect ratio (16:9)
   private currentAspect: number = 16 / 9;
 
   constructor(initialBaseFOV: number = 32.26880414280885) {

@@ -2,6 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useState, useLayoutEffect, useRef, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { usePreloadSectionMedia } from "../hooks/usePreloadSectionMedia";
 import * as THREE from "three";
 import SceneContent from "./SceneContent";
@@ -30,9 +31,13 @@ export default function ThreePlayer({
   const [sliderSelectedSection, setSliderSelectedSection] = useState<number | null>(null);
   const [isExperienceStarted, setIsExperienceStarted] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const mousePositionRef = useRef({ x: 0, y: 0 });
+  const cursorRef = useRef<HTMLDivElement>(null);
+  const [hoveredSection, setHoveredSection] = useState<number | null>(null);
   const totalPages = panelPages.length;
   const canPageUp = pageIndex > 0;
   const canPageDown = pageIndex < totalPages - 1;
+  const [showTooltip, setShowTooltip] = useState(true);
   
   // FOV Controller for managing camera FOV calculations
   const fovController = useRef(new FOVController(projectData?.camera?.object?.fov ?? 50)).current;
@@ -59,6 +64,31 @@ export default function ThreePlayer({
       return () => window.removeEventListener('resize', handleResize);
     }
   }, []);
+
+  // Mouse tracking for custom cursor
+  useEffect(() => {
+    if (isMobile) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      mousePositionRef.current = { x: e.clientX, y: e.clientY };
+      if (cursorRef.current) {
+        cursorRef.current.style.left = `${e.clientX}px`;
+        cursorRef.current.style.top = `${e.clientY}px`;
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    return () => document.removeEventListener('mousemove', handleMouseMove);
+  }, [isMobile]);
+
+  // Initialize cursor position
+  useEffect(() => {
+    if (!isMobile && cursorRef.current && typeof window !== 'undefined') {
+      const rect = cursorRef.current.getBoundingClientRect();
+      cursorRef.current.style.left = `${window.innerWidth / 2}px`;
+      cursorRef.current.style.top = `${window.innerHeight / 2}px`;
+    }
+  }, [isMobile]);
 
   useEffect(() => {
     // Handle window resize and update camera
@@ -121,9 +151,25 @@ export default function ThreePlayer({
 
   return (
     <div 
-      style={{ width: dimensions.width, height: dimensions.height }} 
+      style={{ width: dimensions.width, height: dimensions.height, cursor: hoveredSection == null ? 'auto' : 'none' }} 
       className="relative"
     >
+      {/* Top tooltip */}
+      {showTooltip && (
+        <div className="absolute top-4 mt-12 left-1/2 transform -translate-x-1/2 z-40">
+          <div className="bg-black/60 text-white px-4 py-2 rounded-lg text-sm backdrop-blur-sm flex items-center justify-between">
+        <span>Click on a panel for more info</span>
+        <button
+          onClick={() => setShowTooltip(false)}
+          className="ml-2 text-2xl text-white hover:text-gray-300 cursor-pointer"
+          aria-label="Close tooltip"
+        >
+          ×
+        </button>
+          </div>
+        </div>
+      )}
+
       <Canvas
         shadows={projectData?.project?.shadows}
         gl={{
@@ -188,6 +234,7 @@ export default function ThreePlayer({
           fovController={fovController}
           isExperienceStarted={isExperienceStarted}
           setIsExperienceStarted={setIsExperienceStarted}
+          onHover={setHoveredSection}
         />
       </Canvas>
 
@@ -196,6 +243,34 @@ export default function ThreePlayer({
         selectedSection={selectedSection}
         onClose={() => setSelectedSection(null)}
       />
+
+      {/* Custom cursor for desktop */}
+      {!isMobile && (
+        <div
+          ref={cursorRef}
+          className="absolute pointer-events-none z-[1000000000]"
+          style={{
+            transform: 'translate(-50%, -50%)'
+          }}
+        >
+          <AnimatePresence>
+            {hoveredSection !== null && (
+              <motion.div
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex items-center space-x-2 bg-black/80 text-white px-3 py-2 rounded-lg backdrop-blur-sm"
+              >
+                <span className="text-sm font-medium">
+                  {sectionData.find(s => s.index === hoveredSection)?.title || `Section ${hoveredSection}`}
+                </span>
+                <span className="text-lg">→</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Slider controls: only show when experience has started */}
       {isExperienceStarted && (
