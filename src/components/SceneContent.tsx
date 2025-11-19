@@ -1,12 +1,15 @@
 "use client";
 
-import { useFrame, useThree } from "@react-three/fiber";
+import { extend, useFrame, useThree } from "@react-three/fiber";
 import { useRef, useEffect, useState, useCallback } from "react";
 import * as THREE from 'three';
+import { Text } from 'troika-three-text'
 import { sectionData, panelPages } from './sectionData';
 import SelectorObject from "./SelectorObject";
 import { dispatch, CAMERA_CONFIGS, TRANSITION_CONFIG, FOVController, CameraTransitionController } from "./utils";
 import type { SceneContentProps } from "./types";
+
+extend({ Text });
 
 interface EventHandlers {
   init: Array<(event: unknown) => void>;
@@ -20,6 +23,8 @@ interface EventHandlers {
   update: Array<(event: unknown) => void>;
   [key: string]: Array<(event: unknown) => void>;
 }
+const text =
+  "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
 
 // Component to handle the 3D scene content
 export default function SceneContent({ 
@@ -565,7 +570,35 @@ export default function SceneContent({
           const xSpacing = 2 * spacingMultiplier;
           const actualCount = cfg.sections.length;
           const half = (actualCount - 1) / 2; // simple symmetric center around baseX
-          return cfg.sections.map((section, slot) => {
+          const firstSlot = 0;
+          const firstXPosition = baseX - (firstSlot - half) * xSpacing;
+          let yOffset = -0.09537577629089355;
+          if (phase === 'leaving') {
+            const localStart = firstSlot * perItemDelay;
+            const localT = Math.min(Math.max(current.progress - localStart, 0) / 1, 1);
+            const eased = easeOutExpo(localT);
+            yOffset -= eased * travelDistance;
+          } else if (phase === 'entering') {
+            const reverseSlot = (cfg.sections.length - 1) - firstSlot;
+            const localStart = reverseSlot * perItemDelay;
+            const localT = Math.min(Math.max(current.progress - localStart, 0) / 1, 1);
+            const eased = easeOutExpo(localT);
+            yOffset -= (travelDistance - eased * travelDistance);
+          }
+          const textElement = (
+            <text
+              key={`text-${page}`}
+              text={cfg.label}
+              fontSize={2}                 // roughly comparable to size in Text3D
+              font={"./Montserrat-Bold.ttf"} // path to font file
+              anchorX="center"             // optional; aligns horizontally
+              anchorY="middle"             // optional; aligns vertically
+              maxWidth={Infinity}          // optional; control wrapping
+              depthOffset={0}              // optional; for z-fighting control
+              position={[firstXPosition, yOffset-4, 1.5677690505981445 - 3]}
+            />
+          );
+          const selectors = cfg.sections.map((section, slot) => {
             const i = section.index;
             // Center this page's items around the virtual 10-wide center
             const xPosition = baseX - (slot - half) * xSpacing;
@@ -623,6 +656,10 @@ export default function SceneContent({
               />
             );
           });
+          return [
+            textElement,
+            ...selectors
+          ];
         });
       })()}
     </>
