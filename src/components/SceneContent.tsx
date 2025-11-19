@@ -11,6 +11,9 @@ import type { SceneContentProps } from "./types";
 
 extend({ Text });
 
+// Wrapper component to use lowercase 'text'
+const TextWrapper = (props: any) => <Text {...props} />;
+
 interface EventHandlers {
   init: Array<(event: unknown) => void>;
   start: Array<(event: unknown) => void>;
@@ -585,18 +588,19 @@ export default function SceneContent({
             const eased = easeOutExpo(localT);
             yOffset -= (travelDistance - eased * travelDistance);
           }
+          const textProps = {
+            key: `text-${page}`,
+            text: cfg.label,
+            fontSize: 2,                 // roughly comparable to size in Text3D
+            font: "./Montserrat-Bold.ttf", // path to font file
+            anchorX: "center",             // optional; aligns horizontally
+            anchorY: "middle",             // optional; aligns vertically
+            maxWidth: Infinity,          // optional; control wrapping
+            depthOffset: 0,              // optional; for z-fighting control
+            position: [firstXPosition, yOffset-4, 1.5677690505981445 - 3] as [number, number, number]
+          };
           const textElement = (
-            <text
-              key={`text-${page}`}
-              text={cfg.label}
-              fontSize={2}                 // roughly comparable to size in Text3D
-              font={"./Montserrat-Bold.ttf"} // path to font file
-              anchorX="center"             // optional; aligns horizontally
-              anchorY="middle"             // optional; aligns vertically
-              maxWidth={Infinity}          // optional; control wrapping
-              depthOffset={0}              // optional; for z-fighting control
-              position={[firstXPosition, yOffset-4, 1.5677690505981445 - 3]}
-            />
+            <text {...(textProps as any)} />
           );
           const selectors = cfg.sections.map((section, slot) => {
             const i = section.index;
