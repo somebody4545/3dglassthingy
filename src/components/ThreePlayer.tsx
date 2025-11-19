@@ -208,7 +208,7 @@ export default function ThreePlayer({
                 disabled={!canPageUp}
                 className={`flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl font-semibold text-white shadow-[0_0_0_2px_rgba(255,255,255,0.05),0_8px_30px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl transition hover:bg-white/15 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.15),0_10px_34px_-8px_rgba(0,0,0,0.75)] disabled:cursor-not-allowed disabled:opacity-30 pointer-events-auto`}
                 aria-label="Previous Page"
-              >←</button>
+              >↑</button>
               <div className="text-center text-white/85">
                 <div className="text-lg font-semibold">{pageIndex + 1} / {totalPages}</div>
                 <div className="text-sm text-white/55">{panelPages[pageIndex]?.label}</div>
@@ -219,7 +219,7 @@ export default function ThreePlayer({
                 disabled={!canPageDown}
                 className={`flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-black/40 text-2xl font-semibold text-white shadow-[0_0_0_2px_rgba(255,255,255,0.05),0_8px_30px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl transition hover:bg-white/15 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.15),0_10px_34px_-8px_rgba(0,0,0,0.75)] disabled:cursor-not-allowed disabled:opacity-30 pointer-events-auto`}
                 aria-label="Next Page"
-              >→</button>
+              >↓</button>
             </div>
             <input
               type="range"
