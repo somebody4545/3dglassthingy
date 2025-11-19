@@ -88,6 +88,24 @@ export const panelPages: PanelPageConfig[] = [
   { index: 3, title: 'Section 3', description: 'Description for section 3.', image: '/section-media/images/section-3.png' },
     ]
   },
+    {
+    id: 'full-ten',
+    label: 'AAAAAAAAAAAAAAAAAAAAAA',
+    description: 'Page showing ten content sections (1-10) without the Start panel.',
+    spacingMultiplier: 1,
+    sections: [
+      { index: 1, title: 'Section 1', description: 'Description for section 1.', image: '/section-media/images/section-1.png' },
+      { index: 2, title: 'Section 2', description: 'Description for section 2.', image: '/section-media/images/section-2.png' },
+      { index: 3, title: 'Section 3', description: 'Description for section 3.', image: '/section-media/images/section-3.png' },
+      { index: 4, title: 'Section 4', description: 'Description for section 4.', image: '/section-media/images/section-4.png' },
+      { index: 5, title: 'Section 5', description: 'Description for section 5.', image: '/section-media/images/section-5.png' },
+      { index: 6, title: 'Section 6', description: 'Description for section 6.', image: '/section-media/images/section-6.png' },
+      { index: 7, title: 'Section 7', description: 'Description for section 7.', image: '/section-media/images/section-7.png' },
+      { index: 8, title: 'Section 8', description: 'Description for section 8.', image: '/section-media/images/section-8.png' },
+      { index: 9, title: 'Section 9', description: 'Description for section 9.', image: '/section-media/images/section-9.png' },
+      { index: 10, title: 'Section 10', description: 'Description for section 10.', image: '/section-media/images/section-10.png' },
+    ]
+  },
   {
     id: 'mid-cluster',
     label: 'Projects',
@@ -120,24 +138,6 @@ export const panelPages: PanelPageConfig[] = [
   { index: 2, title: 'Section 2', description: 'Description for section 2.', image: '/section-media/images/section-2.png' },
   { index: 5, title: 'Section 5', description: 'Description for section 5.', image: '/section-media/images/section-5.png' },
   { index: 8, title: 'Section 8', description: 'Description for section 8.', image: '/section-media/images/section-8.png' },
-    ]
-  },
-  {
-    id: 'full-ten',
-    label: 'AAAAAAAAAAAAAAAAAAAAAA',
-    description: 'Page showing ten content sections (1-10) without the Start panel.',
-    spacingMultiplier: 1,
-    sections: [
-      { index: 1, title: 'Section 1', description: 'Description for section 1.', image: '/section-media/images/section-1.png' },
-      { index: 2, title: 'Section 2', description: 'Description for section 2.', image: '/section-media/images/section-2.png' },
-      { index: 3, title: 'Section 3', description: 'Description for section 3.', image: '/section-media/images/section-3.png' },
-      { index: 4, title: 'Section 4', description: 'Description for section 4.', image: '/section-media/images/section-4.png' },
-      { index: 5, title: 'Section 5', description: 'Description for section 5.', image: '/section-media/images/section-5.png' },
-      { index: 6, title: 'Section 6', description: 'Description for section 6.', image: '/section-media/images/section-6.png' },
-      { index: 7, title: 'Section 7', description: 'Description for section 7.', image: '/section-media/images/section-7.png' },
-      { index: 8, title: 'Section 8', description: 'Description for section 8.', image: '/section-media/images/section-8.png' },
-      { index: 9, title: 'Section 9', description: 'Description for section 9.', image: '/section-media/images/section-9.png' },
-      { index: 10, title: 'Section 10', description: 'Description for section 10.', image: '/section-media/images/section-10.png' },
     ]
   },
 ];
