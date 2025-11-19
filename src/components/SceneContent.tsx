@@ -176,7 +176,7 @@ export default function SceneContent({
     tempCam.lookAt(selectorPos);
     tempCam.updateMatrixWorld();
 
-    const targetBaseFOV = isMobile ? 80 : 80; // Base FOV values, FOV controller handles aspect ratio adaptation
+    const targetBaseFOV = isMobile ? 90 : 90; // Base FOV values, FOV controller handles aspect ratio adaptation
 
     const success = transitionController.current.startTransition(
       targetPos,
