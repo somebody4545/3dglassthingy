@@ -156,7 +156,7 @@ export default function ThreePlayer({
     >
       {/* Top tooltip */}
       {showTooltip && (
-        <div className="absolute top-4 mt-12 left-1/2 transform -translate-x-1/2 z-40 ">
+        <div className="absolute top-4 mt-12 left-1/2 transform -translate-x-1/2 z-[100000000] ">
           <div className="bg-black/60 text-white px-4 py-2 rounded-lg text-xl backdrop-blur-sm flex items-center justify-between">
         <span>Click on a panel for more info, <br />and use the slider to skim panels</span>
         <button
