@@ -78,7 +78,7 @@ export function getSectionInfo(index: number): SectionInfo | undefined {
 export const panelPages: PanelPageConfig[] = [
   {
     id: 'overview',
-    label: 'Overview',
+    label: 'Main',
     description: 'High-level introduction panels.',
     spacingMultiplier: 1.2,
     sections: [
@@ -90,7 +90,7 @@ export const panelPages: PanelPageConfig[] = [
   },
   {
     id: 'mid-cluster',
-    label: 'Middle Cluster',
+    label: 'Projects',
     description: 'Core middle sections grouped together.',
     spacingMultiplier: 1,
     sections: [
@@ -102,7 +102,7 @@ export const panelPages: PanelPageConfig[] = [
   },
   {
     id: 'advanced',
-    label: 'Advanced',
+    label: 'Yippee',
     description: 'Later stage or advanced topic panels.',
     spacingMultiplier: 1.4,
     sections: [
@@ -113,7 +113,7 @@ export const panelPages: PanelPageConfig[] = [
   },
   {
     id: 'mixed-path',
-    label: 'Mixed Path',
+    label: 'Gaming',
     description: 'A curated cross-section of various panels.',
     spacingMultiplier: 1.1,
     sections: [
@@ -124,7 +124,7 @@ export const panelPages: PanelPageConfig[] = [
   },
   {
     id: 'full-ten',
-    label: 'Full Ten',
+    label: 'AAAAAAAAAAAAAAAAAAAAAA',
     description: 'Page showing ten content sections (1-10) without the Start panel.',
     spacingMultiplier: 1,
     sections: [
