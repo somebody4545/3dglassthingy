@@ -23,7 +23,7 @@
     "@t3-oss/env-nextjs": "^0.12.0",
     "@types/three": "^0.178.1",
     "framer-motion": "^12.23.11",
-    "next": "^15.2.3",
+    "next": "15.2.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.178.0",
